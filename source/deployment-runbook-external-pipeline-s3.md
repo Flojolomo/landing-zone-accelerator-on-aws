@@ -435,11 +435,45 @@ LZA **requires** these configuration files to deploy:
 
 ### Method 1: Using LZA Source Code Validator (Recommended)
 
-The config validator is built into the LZA source code:
+The config validator is built into the LZA source code and runs **locally** on your machine.
+
+The validator performs **two levels of validation**:
+
+**Level 1: Static Validation**
+- ✅ YAML syntax and schema
+- ✅ Cross-references between config files
+- ✅ Field types and required values
+- ❌ No AWS credentials needed
+
+**Level 2: AWS API Validation**
+- ✅ Verifies account emails exist in AWS Organizations
+- ✅ Validates OU structure matches actual organization
+- ✅ Checks account IDs and names
+- ✅ **Requires AWS credentials with Organizations read access**
+
+**Required IAM Permissions (for Level 2 validation):**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "organizations:DescribeOrganization",
+        "organizations:ListAccounts",
+        "organizations:ListOrganizationalUnitsForParent",
+        "organizations:ListRoots",
+        "organizations:DescribeOrganizationalUnit"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+**Setup and Execution:**
 
 ```bash
-# Prerequisites: LZA source code and Node.js/Yarn installed
-
 # If you haven't already, download and set up LZA source
 LZA_VERSION="v1.15.5"
 wget https://github.com/awslabs/landing-zone-accelerator-on-aws/archive/refs/tags/${LZA_VERSION}.zip
@@ -451,10 +485,14 @@ cd source
 yarn install
 yarn build
 
+# Configure AWS credentials (use Management Account or role with Organizations access)
+export AWS_PROFILE=management-account
+export AWS_REGION=us-east-1
+
 # Run config validator
 cd packages/@aws-accelerator/accelerator
 yarn run ts-node --transpile-only lib/config-validator.ts \
-  --config-dir /absolute/path/to/lza-config
+  /absolute/path/to/lza-config
 
 # OR from the source root directory:
 cd ../../../..  # Back to repo root
@@ -462,7 +500,20 @@ node source/packages/@aws-accelerator/accelerator/lib/config-validator.js \
   /absolute/path/to/lza-config
 ```
 
-**Note:** You must provide an **absolute path** to your config directory.
+**Note:** 
+- You must provide an **absolute path** to your config directory
+- Without AWS credentials, you'll get `AccessDeniedException` warnings (Level 2 validation fails, but Level 1 still runs)
+- For full validation before deployment, use a role with Organizations read permissions
+
+**Understanding Validation Output:**
+
+Your validation output shows:
+```
+AccessDeniedException: You don't have permissions to access this resource.
+```
+This means Level 1 passed, but Level 2 failed due to missing AWS credentials. The validator still caught other issues:
+- Missing network-config.yaml file
+- OU not defined for SharedServices account
 
 ### Method 2: Manual YAML Validation
 
