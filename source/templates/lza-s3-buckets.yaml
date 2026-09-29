@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 buckets for LZA source code and configuration files
+
+Parameters:
+  BucketBaseName:
+    Type: String
+    Description: Base name for buckets (will be formatted as {name}-{accountid}-{region}-an)
+    Default: lza-prod
+
+  EnableKMSEncryption:
+    Type: String
+    Description: Enable KMS encryption for buckets
+    Default: 'Yes'
+    AllowedValues:
+      - 'Yes'
+      - 'No'
+
+Conditions:
+  UseKMSEncryption: !Equals [!Ref EnableKMSEncryption, 'Yes']
+
+Resources:
+  # KMS Key for bucket encryption
+  BucketKMSKey:
+    Type: AWS::KMS::Key
+    Condition: UseKMSEncryption
+    Properties:
+      Description: KMS key for LZA S3 bucket encryption
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow services to use the key
+            Effect: Allow
+            Principal:
+              Service:
+                - s3.amazonaws.com
+                - codepipeline.amazonaws.com
+                - codebuild.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:DescribeKey'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+
+  BucketKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Condition: UseKMSEncryption
+    Properties:
+      AliasName: alias/lza-buckets
+      TargetKeyId: !Ref BucketKMSKey
+
+  # Access logging bucket
+  AccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketBaseName}-logs-${AWS::AccountId}-${AWS::Region}-an'
+      BucketNamespace: account-regional
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+
+  # Source code bucket
+  SourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketBaseName}-source-${AWS::AccountId}-${AWS::Region}-an'
+      BucketNamespace: account-regional
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: !If [UseKMSEncryption, 'aws:kms', 'AES256']
+              KMSMasterKeyID: !If [UseKMSEncryption, !GetAtt BucketKMSKey.Arn, !Ref 'AWS::NoValue']
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogsBucket
+        LogFilePrefix: source-bucket-logs/
+      Tags:
+        - Key: Purpose
+          Value: LZA-Source-Code
+
+  # Configuration bucket
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${BucketBaseName}-config-${AWS::AccountId}-${AWS::Region}-an'
+      BucketNamespace: account-regional
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: !If [UseKMSEncryption, 'aws:kms', 'AES256']
+              KMSMasterKeyID: !If [UseKMSEncryption, !GetAtt BucketKMSKey.Arn, !Ref 'AWS::NoValue']
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogsBucket
+        LogFilePrefix: config-bucket-logs/
+      Tags:
+        - Key: Purpose
+          Value: LZA-Configuration
+
+Outputs:
+  SourceBucketName:
+    Description: Name of the source code bucket
+    Value: !Ref SourceBucket
+    Export:
+      Name: LZA-Source-Bucket-Name
+
+  SourceBucketArn:
+    Description: ARN of the source code bucket
+    Value: !GetAtt SourceBucket.Arn
+    Export:
+      Name: LZA-Source-Bucket-Arn
+
+  ConfigBucketName:
+    Description: Name of the configuration bucket
+    Value: !Ref ConfigBucket
+    Export:
+      Name: LZA-Config-Bucket-Name
+
+  ConfigBucketArn:
+    Description: ARN of the configuration bucket
+    Value: !GetAtt ConfigBucket.Arn
+    Export:
+      Name: LZA-Config-Bucket-Arn
+
+  KMSKeyArn:
+    Description: ARN of the KMS encryption key (if enabled)
+    Value: !If [UseKMSEncryption, !GetAtt BucketKMSKey.Arn, '']
+    Export:
+      Name: LZA-Buckets-KMS-Key-Arn

@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cross-account IAM role for LZA external pipeline deployment
+
+Parameters:
+  ExternalPipelineAccountId:
+    Type: String
+    Description: AWS Account ID of the external pipeline account
+    AllowedPattern: '^\d{12}$'
+
+Resources:
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AWSAccelerator-PipelineRole
+      Description: Cross-account role for LZA pipeline deployment from external account
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${ExternalPipelineAccountId}:root'
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+      Tags:
+        - Key: Purpose
+          Value: LZA-External-Pipeline
+
+Outputs:
+  PipelineRoleArn:
+    Description: ARN of the cross-account pipeline role
+    Value: !GetAtt PipelineRole.Arn
+    Export:
+      Name: LZA-Pipeline-Role-Arn
+
+  PipelineRoleName:
+    Description: Name of the cross-account pipeline role
+    Value: !Ref PipelineRole
