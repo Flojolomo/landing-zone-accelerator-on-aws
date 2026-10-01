@@ -7,11 +7,29 @@ Parameters:
     Description: AWS Account ID of the external pipeline account
     AllowedPattern: '^\d{12}$'
 
+  AcceleratorQualifier:
+    Type: String
+    Description: |
+      CRITICAL: Must match the AcceleratorQualifier used in the Installer Stack deployment
+      in the external pipeline account. This qualifier names the cross-account role and must
+      be consistent across both accounts for external pipeline deployments to work.
+
+      Pattern: lowercase letters, numbers, hyphens only. Must start with letter(s) and end
+      with letter or number. Length: 3-63 characters.
+
+      Examples: "prod", "lza", "dev", "env-production"
+    AllowedPattern: '^[a-z]+[a-z0-9-]{1,61}[a-z0-9]+$'
+    ConstraintDescription: |
+      Qualifier must include lowercase letters and numbers only (3-63 characters).
+      Must start with letter(s), end with letter or number.
+      Cannot use uppercase, underscores, or special characters except hyphens.
+    Default: prod
+
 Resources:
   PipelineRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: AWSAccelerator-PipelineRole
+      RoleName: !Sub '${AcceleratorQualifier}-installer-admin-role'
       Description: Cross-account role for LZA pipeline deployment from external account
       AssumeRolePolicyDocument:
         Version: '2012-10-17'

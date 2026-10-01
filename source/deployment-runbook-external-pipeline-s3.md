@@ -194,19 +194,48 @@ Deploy the cross-account IAM role in the **Management Account** that allows the 
 
 **Parameters Required:**
 - `ExternalPipelineAccountId`: Your External Pipeline Account ID (12 digits)
+- `AcceleratorQualifier`: Qualifier for naming resources (e.g., `prod`, `lza`, `dev`)
+
+**⚠️ CRITICAL: AcceleratorQualifier Consistency**
+
+The `AcceleratorQualifier` parameter **MUST match exactly** with the qualifier used in Step 4 when deploying the Installer Stack in the External Pipeline Account. This qualifier determines the IAM role name:
+
+```
+Role Name Pattern: {qualifier}-installer-admin-role
+
+Examples:
+- AcceleratorQualifier: "prod"  → Role: prod-installer-admin-role
+- AcceleratorQualifier: "lza"   → Role: lza-installer-admin-role
+- AcceleratorQualifier: "dev"   → Role: dev-installer-admin-role
+```
+
+**Why This Matters:**
+- The External Pipeline Account's CodeBuild project assumes this role by name to deploy the main LZA pipeline
+- A mismatch causes deployment failure with "Access Denied" or "Role Not Found" errors
+- The role name is derived from the qualifier in both accounts and must be identical
+
+**Choosing a Qualifier:**
+- Use lowercase letters, numbers, and hyphens only
+- Must start with letter(s) and end with letter or number
+- Length: 3-63 characters
+- Good examples: `prod`, `lza`, `dev`, `staging`, `env-production`
+- Avoid: `aws-accelerator` (reserved), uppercase, underscores
 
 **⚠️ Security Note:** This template uses `AdministratorAccess` for simplicity. For production, consider scoping permissions to specific LZA operations (see Security Considerations section).
 
 **Deployment via AWS CLI:**
 
 ```bash
-DEPLOYMENT_REGION = us-east-1
-PIPELINE_ACCOUNT_ID = 123456789012
+DEPLOYMENT_REGION=us-east-1
+PIPELINE_ACCOUNT_ID=123456789012
+ACCELERATOR_QUALIFIER=prod  # MUST match Step 4 Installer Stack parameter
 
 aws cloudformation create-stack \
   --stack-name LZA-CrossAccount-PipelineRole \
   --template-body file://templates/management-account-pipeline-role.yaml \
-  --parameters ParameterKey=ExternalPipelineAccountId,ParameterValue=$PIPELINE_ACCOUNT_ID \
+  --parameters \
+    ParameterKey=ExternalPipelineAccountId,ParameterValue=$PIPELINE_ACCOUNT_ID \
+    ParameterKey=AcceleratorQualifier,ParameterValue=$ACCELERATOR_QUALIFIER \
   --capabilities CAPABILITY_NAMED_IAM \
   --region $DEPLOYMENT_REGION
 
@@ -230,41 +259,46 @@ PIPELINE_ROLE_NAME=$(aws cloudformation describe-stacks \
 # Display outputs
 echo "Pipeline Role ARN: ${PIPELINE_ROLE_ARN}"
 echo "Pipeline Role Name: ${PIPELINE_ROLE_NAME}"
+echo ""
+echo "⚠️  SAVE THIS QUALIFIER: ${ACCELERATOR_QUALIFIER}"
+echo "You MUST use the same value in Step 4 (Installer Stack parameter)"
 ```
 
 **Deployment via Console:**
 1. Navigate to CloudFormation in Management Account
 2. Create Stack → Upload template file: `templates/management-account-pipeline-role.yaml`
 3. Stack name: `LZA-CrossAccount-PipelineRole`
-4. Enter parameter: `ExternalPipelineAccountId`
-5. Acknowledge IAM capabilities
-6. Create stack
+4. Enter parameters:
+   - `ExternalPipelineAccountId`: Your External Pipeline Account ID
+   - `AcceleratorQualifier`: Your chosen qualifier (e.g., `prod`, `lza`)
+5. **⚠️ SAVE THE QUALIFIER VALUE** - You need it for Step 4
+6. Acknowledge IAM capabilities
+7. Create stack
 
 ---
 
-### Step 2: Deploy S3 Buckets in External Pipeline Account
+### Step 2: Deploy S3 Source Bucket in External Pipeline Account
 
-Deploy S3 buckets in the **External Pipeline Account** for LZA source code and configuration files.
+Deploy S3 bucket in the **External Pipeline Account** for LZA source code.
 
-**Template File:** `templates/lza-s3-buckets.yaml`
+**Template File:** `templates/lza-source-bucket.yaml` (simplified template - config bucket not needed)
 
 **Parameters Required:**
-- `BucketBaseName`: Base name for all buckets (e.g., `lza-prod`)
+- `BucketBaseName`: Base name for bucket (e.g., `lza-prod`)
 - `EnableKMSEncryption`: `Yes` (recommended) or `No`
 
 **Bucket Naming Convention:**
-Uses AWS account-regional namespaces with format: `{basename}-{purpose}-{accountid}-{region}-an`
+Uses AWS account-regional namespaces with format: `{basename}-source-{accountid}-{region}-an`
 
-**Example bucket names:**
+**Example bucket name:**
 - Source: `lza-prod-source-123456789012-us-east-1-an`
-- Config: `lza-prod-config-123456789012-us-east-1-an`
-- Logs: `lza-prod-logs-123456789012-us-east-1-an`
 
 **Resources Created:**
 - Source code bucket (with versioning and KMS encryption)
-- Configuration bucket (with versioning and KMS encryption)
 - Access logs bucket (for audit trail)
 - KMS key and alias (if encryption enabled)
+
+**⚠️ Configuration Bucket:** When using `ConfigurationRepositoryLocation: s3`, LZA automatically creates the configuration bucket during installer stack deployment. You do NOT need to pre-create it in this step. The CloudFormation template only creates the source code bucket.
 
 **Deployment via AWS CLI:**
 
@@ -273,10 +307,10 @@ Uses AWS account-regional namespaces with format: `{basename}-{purpose}-{account
 DEPLOYMENT_REGION="us-east-1"
 BUCKET_BASE_NAME="lza-prod"
 
-# Deploy stack
+# Deploy stack (source bucket only - config bucket auto-created by LZA)
 aws cloudformation create-stack \
-  --stack-name LZA-S3-Buckets \
-  --template-body file://templates/lza-s3-buckets.yaml \
+  --stack-name LZA-Source-Bucket \
+  --template-body file://templates/lza-source-bucket.yaml \
   --parameters \
     ParameterKey=BucketBaseName,ParameterValue=${BUCKET_BASE_NAME} \
     ParameterKey=EnableKMSEncryption,ParameterValue=Yes \
@@ -284,40 +318,34 @@ aws cloudformation create-stack \
 
 # Wait for completion
 aws cloudformation wait stack-create-complete \
-  --stack-name LZA-S3-Buckets \
+  --stack-name LZA-Source-Bucket \
   --region ${DEPLOYMENT_REGION}
 
 # Get outputs (save KMS Key ARN for Step 3)
 aws cloudformation describe-stacks \
-  --stack-name LZA-S3-Buckets \
+  --stack-name LZA-Source-Bucket \
   --query 'Stacks[0].Outputs' \
   --region ${DEPLOYMENT_REGION}
 
 # Save outputs to variables for later use
 KMS_KEY_ARN=$(aws cloudformation describe-stacks \
-  --stack-name LZA-S3-Buckets \
+  --stack-name LZA-Source-Bucket \
   --query 'Stacks[0].Outputs[?OutputKey==`KMSKeyArn`].OutputValue' \
   --output text \
   --region ${DEPLOYMENT_REGION})
 
-# Get actual bucket names (with --region--x-s3 suffix)
+# Get actual source bucket name
 SOURCE_BUCKET=$(aws cloudformation describe-stacks \
-  --stack-name LZA-S3-Buckets \
+  --stack-name LZA-Source-Bucket \
   --query 'Stacks[0].Outputs[?OutputKey==`SourceBucketName`].OutputValue' \
-  --output text \
-  --region ${DEPLOYMENT_REGION})
-
-CONFIG_BUCKET=$(aws cloudformation describe-stacks \
-  --stack-name LZA-S3-Buckets \
-  --query 'Stacks[0].Outputs[?OutputKey==`ConfigBucketName`].OutputValue' \
   --output text \
   --region ${DEPLOYMENT_REGION})
 ```
 
 **Deployment via Console:**
 1. Navigate to CloudFormation in External Pipeline Account
-2. Create Stack → Upload template file: `templates/lza-s3-buckets.yaml`
-3. Stack name: `LZA-S3-Buckets`
+2. Create Stack → Upload template file: `templates/lza-source-bucket.yaml`
+3. Stack name: `LZA-Source-Bucket`
 4. Enter parameters:
    - `BucketBaseName`: e.g., `lza-prod`
    - `EnableKMSEncryption`: `Yes`
@@ -343,82 +371,11 @@ aws s3 cp ${LZA_SOURCE_ZIP} \
 
 # Verify source code upload
 aws s3 ls s3://${SOURCE_BUCKET}/release/
-
-# Upload configuration files
-# LZA sample configs are now in a separate repository
-# These MUST be customized for your environment before uploading
-
-# Option 1: Download sample configurations from AWS
-# Clone the LZA Universal Configuration repository
-git clone https://github.com/aws/lza-universal-configuration.git
-
-# Copy the base configuration (simplest starting point)
-cp -r lza-universal-configuration/modules/base/default/ ./lza-config/
-
-# OR choose a different module based on your needs:
-# - modules/base/default/              # Standard AWS Organizations setup
-# - modules/workloads/network-hub/     # Network hub architecture
-# - modules/compliance/nist-800-53/    # NIST compliance baseline
-# See repository README for all available modules
-
-# Option 2: Use minimal config templates from this runbook
-# See "Configuration File Templates" section below
-
-# Customize the configs with YOUR values:
-# - Account IDs and email addresses (MUST match AWS Organizations)
-# - Region preferences
-# - Organizational structure
-# - Security baselines
-# Edit files in ./lza-config/ before uploading
-
-# CRITICAL: Validate configuration before uploading
-# See "Validating Configuration Files" section for detailed instructions
-
-# Quick validation: Check YAML syntax
-cd lza-config/
-for file in *.yaml; do
-  python -c "import yaml; yaml.safe_load(open('$file'))" && echo "✓ $file" || echo "✗ $file has syntax errors"
-done
-
-# Full validation: Use LZA config validator (recommended - see validation section)
-# Requires LZA source code to be built first
-
-# If validation passes, proceed with upload
-cd ..
-aws s3 sync ./lza-config/ s3://${CONFIG_BUCKET}/
-
-# Verify config upload
-aws s3 ls s3://${CONFIG_BUCKET}/
 ```
 
-**⚠️ Configuration Files Are NOT Optional:**
+**⚠️ Configuration Files:**
 
-LZA **requires** these configuration files to deploy:
-- `global-config.yaml` - Regions, logging, control tower settings
-- `accounts-config.yaml` - Account definitions with YOUR email addresses
-- `organization-config.yaml` - OU structure
-- `security-config.yaml` - Security controls
-- `network-config.yaml` - VPC and networking setup
-
-**Why Customize?**
-- Sample configs contain **placeholder values**
-- You must provide **actual account IDs and email addresses**
-- Default security settings may not meet your requirements
-- Network CIDR ranges must not conflict with existing infrastructure
-
-**Two Options:**
-1. **Use AWS Universal Configuration** - Clone from https://github.com/aws/lza-universal-configuration
-   - Production-ready reference architectures
-   - Multiple patterns (Standard, GovCloud, Multi-Region, etc.)
-   - Comprehensive security baselines
-2. **Use minimal templates** - Provided in this runbook's "Configuration File Templates" section
-   - Simplest starting point
-   - Expand as needed
-
-**Resource:** LZA Universal Configuration Repository
-- URL: https://github.com/aws/lza-universal-configuration
-- Contains multiple reference configurations
-- Includes industry compliance baselines (NIST, PCI-DSS, etc.)
+Configuration files are NOT uploaded in this step. When using `ConfigurationRepositoryLocation: s3`, LZA automatically creates a configuration bucket during the installer stack deployment (Step 3). You will upload configuration files to this auto-created bucket **after** the installer completes (see Step 4).
 
 ---
 
@@ -556,10 +513,87 @@ The LZA pipeline automatically validates configurations during the first stage, 
 
 ### Step 3: Deploy LZA Installer Stack in External Pipeline Account
 
-Deploy the official LZA Installer Stack in the **External Pipeline Account**.
+Deploy the LZA Installer Stack in the **External Pipeline Account**.
 
-**Template Source:** Download from AWS Solutions Library or GitHub:
-- https://github.com/awslabs/landing-zone-accelerator-on-aws/releases
+**⚠️ EXTERNAL PIPELINE REQUIREMENT:** For external pipeline deployments with S3 source, you **MUST build the installer template from source**. The pre-built templates from GitHub releases are designed for standard deployments (pipeline in management account) and do not support external pipeline configurations.
+
+#### Build Custom Installer Template from Source
+
+**Prerequisites:**
+- LZA source code downloaded and extracted (from Step 2)
+- Node.js 18.x or 20.x
+- Yarn 1.x
+
+```bash
+# Set LZA version
+LZA_VERSION="v1.15.5"
+
+# Navigate to LZA source directory
+# If you downloaded the release:
+cd landing-zone-accelerator-on-aws-${LZA_VERSION}/source
+
+# If you cloned the repository:
+# cd landing-zone-accelerator-on-aws/source
+
+# Install dependencies and build (if not already done)
+yarn install
+yarn build
+
+# Navigate to the installer package
+cd packages/@aws-accelerator/installer
+
+# Set required context parameters for external pipeline deployment
+# REPLACE with your actual KMS Key ARN from Step 2
+KMS_KEY_ARN="arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+
+# Synthesize the CloudFormation template with context
+# This generates the custom template with external pipeline support
+yarn cdk synth \
+  --context use-s3-source=true \
+  --context s3-source-kms-key-arn=${KMS_KEY_ARN} \
+  --context use-external-pipeline-account=true \
+  --all \
+  --output ./cdk.out
+
+# The generated template is located at:
+# cdk.out/AWSAccelerator-InstallerStack.template.json
+
+# Set LZA version (must match the source code version)
+LZA_VERSION="v1.15.5"
+
+# Ensure SOURCE_BUCKET variable is set from Step 2
+echo "Source Bucket: ${SOURCE_BUCKET}"
+
+# Copy to a working location with version in filename
+cp cdk.out/AWSAccelerator-InstallerStack.template.json \
+  ~/lza-installer-external-pipeline-${LZA_VERSION}.template.json
+
+# Check template size
+ls -lh ~/lza-installer-external-pipeline-${LZA_VERSION}.template.json
+
+# Upload template to S3 source bucket with version in filename (REQUIRED - template too large for direct upload)
+# CloudFormation has a 51,200 byte (50KB) limit for direct template-body uploads
+# The installer template is typically 200KB+, so S3 upload is mandatory
+aws s3 cp ~/lza-installer-external-pipeline-${LZA_VERSION}.template.json \
+  "s3://${SOURCE_BUCKET}/templates/AWSAccelerator-InstallerStack-${LZA_VERSION}.template.json"
+
+# Verify upload
+aws s3 ls "s3://${SOURCE_BUCKET}/templates/"
+```
+
+**Why Build from Source?**
+
+The custom-built template includes:
+- ✅ Support for `RepositorySource: s3` parameter
+- ✅ S3 bucket configuration parameters (`RepositoryBucketName`, `RepositoryBucketKmsKeyArn`)
+- ✅ External pipeline cross-account role configuration
+- ✅ Proper S3 source action for CodePipeline
+- ✅ Configuration repository S3 integration
+
+The downloaded template from GitHub releases:
+- ❌ Designed for standard deployment (pipeline in management account)
+- ❌ May not include all external pipeline parameters
+- ❌ Not configured for cross-account S3 source
 
 **Parameters Template:** `templates/lza-installer-params.json` (customize before use)
 
@@ -569,8 +603,9 @@ Deploy the official LZA Installer Stack in the **External Pipeline Account**.
 2. **RepositoryBucketKmsKeyArn** - Use KMS Key ARN from Step 2 outputs (if encryption enabled)
 3. **Bucket Names** - Use actual bucket names from Step 2
 4. **Account IDs & Emails** - Must match your actual accounts
+5. **RepositorySource** - Must be set to `s3` for external pipeline
 
-**Prepare Parameters File:**
+#### Prepare Parameters File
 
 Edit `templates/lza-installer-params.json` with your values:
 
@@ -578,38 +613,39 @@ Edit `templates/lza-installer-params.json` with your values:
 # Get values from previous steps
 DEPLOYMENT_REGION="us-east-1"
 MGMT_ACCOUNT_ID="123456789012"  # Your Management Account ID
+LOG_ARCHIVE_ACCOUNT_ID="123456789013"  # Your Log Archive Account ID
+AUDIT_ACCOUNT_ID="123456789014"  # Your Audit Account ID
 
-# Get bucket names and KMS key from Step 2 stack outputs
+# Get source bucket name and KMS key from Step 2 stack outputs
 SOURCE_BUCKET=$(aws cloudformation describe-stacks \
-  --stack-name LZA-S3-Buckets \
+  --stack-name LZA-Source-Bucket \
   --query 'Stacks[0].Outputs[?OutputKey==`SourceBucketName`].OutputValue' \
   --output text \
   --region ${DEPLOYMENT_REGION})
 
-CONFIG_BUCKET=$(aws cloudformation describe-stacks \
-  --stack-name LZA-S3-Buckets \
-  --query 'Stacks[0].Outputs[?OutputKey==`ConfigBucketName`].OutputValue' \
-  --output text \
-  --region ${DEPLOYMENT_REGION})
-
 KMS_KEY_ARN=$(aws cloudformation describe-stacks \
-  --stack-name LZA-S3-Buckets \
+  --stack-name LZA-Source-Bucket \
   --query 'Stacks[0].Outputs[?OutputKey==`KMSKeyArn`].OutputValue' \
   --output text \
   --region ${DEPLOYMENT_REGION})
 
-# Update the parameters file with your values
-# Edit templates/lza-installer-params.json manually or use jq:
+# ⚠️ CRITICAL: Get the AcceleratorQualifier from Step 1 (MUST match exactly)
+ACCELERATOR_QUALIFIER="prod"  # ⚠️ MUST match Step 1 Management Account role parameter
+
+# Create updated parameters file
 cat > lza-installer-params-updated.json <<EOF
 [
-  {"ParameterKey": "AcceleratorQualifier", "ParameterValue": "prod"},
+  {"ParameterKey": "AcceleratorQualifier", "ParameterValue": "${ACCELERATOR_QUALIFIER}"},
   {"ParameterKey": "ManagementAccountId", "ParameterValue": "${MGMT_ACCOUNT_ID}"},
-  {"ParameterKey": "ManagementAccountRoleName", "ParameterValue": "AWSAccelerator-PipelineRole"},
+  {"ParameterKey": "LogArchiveAccountId", "ParameterValue": "${LOG_ARCHIVE_ACCOUNT_ID}"},
+  {"ParameterKey": "AuditAccountId", "ParameterValue": "${AUDIT_ACCOUNT_ID}"},
+  {"ParameterKey": "ManagementAccountRoleName", "ParameterValue": "${ACCELERATOR_QUALIFIER}-installer-admin-role"},
   {"ParameterKey": "RepositorySource", "ParameterValue": "s3"},
   {"ParameterKey": "RepositoryBucketName", "ParameterValue": "${SOURCE_BUCKET}"},
   {"ParameterKey": "RepositoryBucketObject", "ParameterValue": "release/v1.15.5.zip"},
   {"ParameterKey": "RepositoryBucketKmsKeyArn", "ParameterValue": "${KMS_KEY_ARN}"},
   {"ParameterKey": "EnableApprovalStage", "ParameterValue": "No"},
+  {"ParameterKey": "ApprovalStageNotifyEmailList", "ParameterValue": ""},
   {"ParameterKey": "ManagementAccountEmail", "ParameterValue": "aws-management@example.com"},
   {"ParameterKey": "LogArchiveAccountEmail", "ParameterValue": "aws-log-archive@example.com"},
   {"ParameterKey": "AuditAccountEmail", "ParameterValue": "aws-audit@example.com"},
@@ -622,17 +658,70 @@ cat > lza-installer-params-updated.json <<EOF
 EOF
 ```
 
+**⚠️ CRITICAL Parameters for External Pipeline:**
+
+1. **AcceleratorQualifier** - **MUST match exactly** with Step 1 Management Account role parameter
+   - Determines IAM role naming: `{qualifier}-installer-admin-role`
+   - **Mismatch causes deployment failure** with "Access Denied" errors
+   - Examples: `prod`, `lza`, `dev`, `staging`
+
+2. **ManagementAccountRoleName** - **MUST use pattern:** `{qualifier}-installer-admin-role`
+   - **NOT** the legacy `AWSAccelerator-PipelineRole`
+   - Example: `AcceleratorQualifier: "prod"` → `ManagementAccountRoleName: "prod-installer-admin-role"`
+   - Example: `AcceleratorQualifier: "lza"` → `ManagementAccountRoleName: "lza-installer-admin-role"`
+
+3. **ManagementAccountId** - Management account ID (12 digits)
+
+4. **RepositorySource** - Must be `s3` for external pipeline
+
+5. **RepositoryBucketName** - Source bucket from Step 2
+
+6. **RepositoryBucketKmsKeyArn** - KMS key ARN from Step 2 (if encryption enabled)
+
+7. **ConfigurationRepositoryLocation** - Must be `s3` (LZA auto-creates config bucket)
+
+**⚠️ Qualifier Consistency Check:**
+```bash
+# Verify your qualifier matches Step 1
+echo "Step 1 AcceleratorQualifier: ${ACCELERATOR_QUALIFIER}"
+echo "Role name in Management Account: ${ACCELERATOR_QUALIFIER}-installer-admin-role"
+echo "ManagementAccountRoleName parameter: ${ACCELERATOR_QUALIFIER}-installer-admin-role"
+echo ""
+echo "✅ These MUST all use the same qualifier value"
+```
+- `UseExistingConfigRepo`: Must be `No` when using S3 for configuration
+- `ManagementAccountEmail`, `LogArchiveAccountEmail`, `AuditAccountEmail`: Must match AWS Organizations exactly
+
+#### Deploy Installer Stack
+
+**⚠️ FINAL PRE-DEPLOYMENT CHECK:**
+
+Before deploying, verify your `lza-installer-params-updated.json` has:
+1. `AcceleratorQualifier` matches Step 1 value exactly
+2. `ManagementAccountRoleName` is `{qualifier}-installer-admin-role` (NOT `AWSAccelerator-PipelineRole`)
+
 **Deployment via AWS CLI:**
 
 ```bash
-# Download LZA Installer template
-LZA_VERSION="v1.15.5"
-wget https://github.com/awslabs/landing-zone-accelerator-on-aws/releases/download/${LZA_VERSION}/AWSAccelerator-InstallerStack.template.json
+# Ensure variables are set from previous steps
+# SOURCE_BUCKET - from Step 2
+# DEPLOYMENT_REGION - your deployment region
+# LZA_VERSION - must match uploaded template version
+# ACCELERATOR_QUALIFIER - MUST match Step 1 (for reference only, not used in deployment command)
 
-# Deploy stack
+# Verify variables are set
+echo "Source Bucket: ${SOURCE_BUCKET}"
+echo "Region: ${DEPLOYMENT_REGION}"
+echo "LZA Version: ${LZA_VERSION}"
+echo "Accelerator Qualifier: ${ACCELERATOR_QUALIFIER}"
+echo ""
+echo "⚠️  Verify lza-installer-params-updated.json before proceeding:"
+cat lza-installer-params-updated.json | jq '.[] | select(.ParameterKey == "AcceleratorQualifier" or .ParameterKey == "ManagementAccountRoleName")'
+
+# Deploy stack using S3 template URL (required for large templates)
 aws cloudformation create-stack \
   --stack-name AWSAccelerator-InstallerStack \
-  --template-body file://AWSAccelerator-InstallerStack.template.json \
+  --template-url "https://${SOURCE_BUCKET}.s3.${DEPLOYMENT_REGION}.amazonaws.com/templates/AWSAccelerator-InstallerStack-${LZA_VERSION}.template.json" \
   --parameters file://lza-installer-params-updated.json \
   --capabilities CAPABILITY_NAMED_IAM \
   --region ${DEPLOYMENT_REGION}
@@ -649,15 +738,27 @@ aws cloudformation describe-stacks \
   --region ${DEPLOYMENT_REGION}
 ```
 
+**⚠️ Template Size:** The installer template is typically 200KB+, exceeding CloudFormation's 51,200 byte limit for direct uploads. You **must** use `--template-url` pointing to the S3-uploaded template, not `--template-body` with a local file.
+
 **Deployment via Console:**
-1. Download official LZA Installer template
-2. Navigate to CloudFormation in External Pipeline Account
-3. Create Stack → Upload template file
+1. Navigate to CloudFormation in External Pipeline Account
+2. Create Stack → **Specify Amazon S3 URL**
+3. Enter S3 URL: `https://${SOURCE_BUCKET}.s3.${DEPLOYMENT_REGION}.amazonaws.com/templates/AWSAccelerator-InstallerStack-${LZA_VERSION}.template.json`
+   - Replace `${SOURCE_BUCKET}` with your actual bucket name
+   - Replace `${DEPLOYMENT_REGION}` with your region (e.g., `us-east-1`)
+   - Replace `${LZA_VERSION}` with your version (e.g., `v1.15.5`)
 4. Stack name: `AWSAccelerator-InstallerStack`
-5. Enter parameters from your customized JSON file
-6. **CRITICAL**: Leave `ApprovalStageNotifyEmailList` field **completely blank**
+5. Enter parameters (or upload your parameters JSON file)
+6. **CRITICAL Parameters**: 
+   - **AcceleratorQualifier**: MUST match Step 1 value (e.g., `prod`, `lza`)
+   - **ManagementAccountRoleName**: MUST be `{qualifier}-installer-admin-role` (e.g., `prod-installer-admin-role`)
+   - Leave `ApprovalStageNotifyEmailList` field **completely blank**
+   - Ensure `RepositorySource` is set to `s3`
+   - Ensure `ConfigurationRepositoryLocation` is set to `s3`
 7. Acknowledge IAM capabilities
 8. Create stack
+
+**⚠️ Do NOT use "Upload a template file"** - the template is too large (200KB+) for direct upload. You must use the S3 URL option.
 
 ---
 
@@ -667,11 +768,41 @@ aws cloudformation describe-stacks \
 
 **Check Stack Outputs in External Pipeline Account:**
 
-Expected CloudFormation Outputs:
-- `PipelineName`: `prod-installer`
+Expected CloudFormation Outputs (with `AcceleratorQualifier: "prod"` example):
+- `PipelineName`: `prod-installer` (uses your qualifier)
 - `InstallerKey`: KMS Key ARN for installer encryption
-- `InstallerLogsBucket`: Access logs bucket name
-- `InstallerSecureBucket`: Secure bucket for pipeline artifacts
+- `InstallerLogsBucket`: Access logs bucket name (e.g., `prod-s3-logs-{AccountId}-{Region}`)
+- `InstallerSecureBucket`: Secure bucket for pipeline artifacts (e.g., `prod-installer-{AccountId}-{Region}`)
+
+**Verify Qualifier Was Applied:**
+
+```bash
+# Check that resources were created with your qualifier
+QUALIFIER="prod"  # Replace with your actual qualifier
+
+# Check pipeline name
+aws codepipeline get-pipeline \
+  --name "${QUALIFIER}-installer" \
+  --region ${DEPLOYMENT_REGION} \
+  --query 'pipeline.name'
+
+# Check IAM role
+aws iam get-role \
+  --role-name "${QUALIFIER}-installer-admin-role" \
+  --query 'Role.RoleName'
+
+# Check S3 buckets
+aws s3api list-buckets \
+  --query "Buckets[?starts_with(Name, '${QUALIFIER}-')].Name"
+
+# Check SSM parameters
+aws ssm get-parameters-by-path \
+  --path "/accelerator/${QUALIFIER}/" \
+  --region ${DEPLOYMENT_REGION} \
+  --query 'Parameters[].Name'
+```
+
+**✅ All resource names should include your qualifier as a prefix**
 
 **Verify Created Resources:**
 
@@ -687,6 +818,9 @@ Navigate to AWS Console and verify:
 3. **S3 Buckets**
    - `prod-installer-{AccountId}-{Region}` (secure bucket)
    - `prod-s3-logs-{AccountId}-{Region}` (logs bucket)
+   - **Configuration bucket** (auto-created when ConfigurationRepositoryLocation="s3"):
+     - Look for bucket with naming pattern: `{AcceleratorPrefix}-config-{AccountId}-{Region}`
+     - Example: `awsaccelerator-config-123456789012-us-east-1`
 
 4. **KMS Keys**
    - Alias: `alias/accelerator/prod/installer/kms/key`
@@ -700,9 +834,98 @@ Navigate to AWS Console and verify:
    - `/accelerator/AWSAccelerator-InstallerStack/version`
    - `/accelerator/installer/kms/key-arn`
 
+**Save Configuration Bucket Name:**
+
+```bash
+# Find the auto-created configuration bucket
+CONFIG_BUCKET=$(aws s3api list-buckets \
+  --query "Buckets[?starts_with(Name, 'awsaccelerator-config')].Name | [0]" \
+  --output text)
+
+echo "Configuration bucket: ${CONFIG_BUCKET}"
+```
+
 ---
 
-### Step 5: Trigger Initial Pipeline Execution
+### Step 4a: Upload Configuration Files
+
+After the installer stack completes, upload your LZA configuration files to the auto-created configuration bucket.
+
+**Prepare Configuration Files:**
+
+```bash
+# Option 1: Clone AWS Universal Configuration repository
+git clone https://github.com/aws/lza-universal-configuration.git
+
+# Copy the base configuration (simplest starting point)
+cp -r lza-universal-configuration/modules/base/default/ ./lza-config/
+
+# OR choose a different module based on your needs:
+# - modules/base/default/              # Standard AWS Organizations setup
+# - modules/workloads/network-hub/     # Network hub architecture  
+# - modules/compliance/nist-800-53/    # NIST compliance baseline
+
+# Option 2: Use minimal config templates from this runbook
+# See "Configuration File Templates" section below
+```
+
+**⚠️ Required Configuration Files:**
+- `global-config.yaml` - Regions, logging, control tower settings
+- `accounts-config.yaml` - Account definitions with YOUR email addresses
+- `organization-config.yaml` - OU structure
+- `security-config.yaml` - Security controls
+- `network-config.yaml` - VPC and networking setup
+
+**Customize Configuration:**
+
+Edit files in `./lza-config/` with YOUR values:
+- Account IDs and email addresses (MUST match AWS Organizations exactly)
+- Region preferences
+- Organizational structure
+- Security baselines
+- Network CIDR ranges
+
+**Validate Configuration:**
+
+See "Validating Configuration Files" section for detailed validation instructions.
+
+Quick syntax check:
+```bash
+cd lza-config/
+for file in *.yaml; do
+  python -c "import yaml; yaml.safe_load(open('$file'))" && echo "✓ $file" || echo "✗ $file has syntax errors"
+done
+cd ..
+```
+
+**Upload to S3:**
+
+```bash
+# Upload configuration files to the auto-created bucket
+aws s3 sync ./lza-config/ s3://${CONFIG_BUCKET}/ \
+  --exclude ".git/*" \
+  --exclude ".claude/*" \
+  --exclude ".gitignore" \
+  --exclude "*.md" \
+  --exclude ".DS_Store"
+
+# Verify upload
+aws s3 ls s3://${CONFIG_BUCKET}/
+```
+
+**Expected output:**
+```
+global-config.yaml
+accounts-config.yaml
+organization-config.yaml
+security-config.yaml
+network-config.yaml
+iam-config.yaml (optional)
+```
+
+---
+
+### Step 5: Trigger Initial Installer Pipeline Execution
 
 **Manual Trigger via Console:**
 1. Navigate to CodePipeline in External Pipeline Account
@@ -760,11 +983,19 @@ Switch to **Management Account** and verify:
 
 ### Updating LZA Configuration Files
 
-LZA configuration files are stored in the S3 bucket created in Step 2.
+LZA configuration files are stored in the auto-created S3 configuration bucket (from Step 4).
+
+**Configuration Bucket Name:**
+```bash
+# Find your configuration bucket
+CONFIG_BUCKET=$(aws s3api list-buckets \
+  --query "Buckets[?starts_with(Name, 'awsaccelerator-config')].Name | [0]" \
+  --output text)
+```
 
 **Required Configuration Files:**
 ```
-s3://lza-config-bucket/
+s3://${CONFIG_BUCKET}/
 ├── global-config.yaml
 ├── accounts-config.yaml
 ├── organization-config.yaml
@@ -777,14 +1008,19 @@ s3://lza-config-bucket/
 
 1. **Prepare Updated Configuration**
    - Modify configuration files locally
-   - Validate YAML syntax
+   - Validate YAML syntax (see "Validating Configuration Files" section)
    - Review changes against LZA documentation
 
-2. **Upload to S3 via Console**
-   - Navigate to S3 Console
-   - Select config bucket: `lza-config-bucket`
-   - Upload modified files
-   - Verify new versions are created
+2. **Upload to S3**
+   ```bash
+   # Upload modified files
+   aws s3 sync ./lza-config/ s3://${CONFIG_BUCKET}/ \
+     --exclude ".git/*" \
+     --exclude ".claude/*"
+   
+   # Verify new versions
+   aws s3 ls s3://${CONFIG_BUCKET}/
+   ```
 
 3. **Trigger Pipeline**
    - Navigate to CodePipeline in Management Account
@@ -910,18 +1146,36 @@ Update the S3 bucket stack with this additional resource.
 **Root Cause:**
 - Trust policy in Management Account role doesn't allow External Pipeline Account
 - Role name mismatch between parameter and actual role
+- AcceleratorQualifier mismatch between Step 1 and Step 3
 
 **Solution:**
 
-1. **Verify Role Name**
-   - In Management Account, check IAM role: `AWSAccelerator-PipelineRole`
-   - Verify it matches `ManagementAccountRoleName` parameter exactly
+1. **Verify AcceleratorQualifier Consistency**
+   ```bash
+   # Check Management Account role name (from Step 1)
+   aws iam get-role \
+     --role-name "{qualifier}-installer-admin-role" \
+     --query 'Role.RoleName'
+   
+   # Check Installer Stack parameter (from Step 3)
+   aws cloudformation describe-stacks \
+     --stack-name AWSAccelerator-InstallerStack \
+     --query 'Stacks[0].Parameters[?ParameterKey==`ManagementAccountRoleName`].ParameterValue' \
+     --output text
+   
+   # These MUST match exactly
+   ```
 
-2. **Verify Trust Policy**
+2. **Verify Role Name Pattern**
+   - In Management Account, check IAM role: `{qualifier}-installer-admin-role`
+   - Verify it matches `ManagementAccountRoleName` parameter exactly
+   - Example: `prod-installer-admin-role`, `lza-installer-admin-role`
+
+3. **Verify Trust Policy**
    - Check trust policy allows External Pipeline Account ID
    - Update role trust policy if needed via CloudFormation stack update
 
-3. **Verify Account ID**
+4. **Verify Account ID**
    - Confirm `ManagementAccountId` parameter matches actual Management Account ID
    - Check for typos or old account IDs
 

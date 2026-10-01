@@ -1,51 +1,67 @@
 [
   {
     "ParameterKey": "AcceleratorQualifier",
-    "ParameterValue": "prod"
+    "ParameterValue": "prod",
+    "_comment": "CRITICAL: Must match Step 1 Management Account role parameter. Determines role naming: {qualifier}-installer-admin-role"
   },
   {
     "ParameterKey": "ManagementAccountId",
-    "ParameterValue": "123456789012"
+    "ParameterValue": "123456789012",
+    "_comment": "Your AWS Organizations Management Account ID (12 digits)"
   },
   {
     "ParameterKey": "ManagementAccountRoleName",
-    "ParameterValue": "AWSAccelerator-PipelineRole"
+    "ParameterValue": "prod-installer-admin-role",
+    "_comment": "CRITICAL: Must match pattern {qualifier}-installer-admin-role. NOT the legacy AWSAccelerator-PipelineRole"
   },
   {
     "ParameterKey": "RepositorySource",
-    "ParameterValue": "s3"
+    "ParameterValue": "s3",
+    "_comment": "Must be 's3' for external pipeline deployments"
   },
   {
     "ParameterKey": "RepositoryBucketName",
-    "ParameterValue": "lza-prod-source-123456789012-us-east-1-an"
+    "ParameterValue": "lza-prod-source-123456789012-us-east-1-an",
+    "_comment": "S3 bucket name from Step 2 (lza-source-bucket stack output)"
   },
   {
     "ParameterKey": "RepositoryBucketObject",
-    "ParameterValue": "release/v1.15.5.zip"
+    "ParameterValue": "release/v1.15.5.zip",
+    "_comment": "S3 object key for LZA source code zip file"
   },
   {
     "ParameterKey": "RepositoryBucketKmsKeyArn",
-    "ParameterValue": "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+    "ParameterValue": "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+    "_comment": "KMS Key ARN from Step 2 (if encryption enabled)"
   },
   {
     "ParameterKey": "EnableApprovalStage",
     "ParameterValue": "No"
   },
   {
+    "ParameterKey": "ApprovalStageNotifyEmailList",
+    "ParameterValue": "",
+    "_comment": "Leave empty when EnableApprovalStage is No"
+  },
+  {
     "ParameterKey": "ManagementAccountEmail",
-    "ParameterValue": "aws-management@example.com"
+    "ParameterValue": "aws-management@example.com",
+    "_comment": "Must match AWS Organizations email exactly"
   },
   {
     "ParameterKey": "LogArchiveAccountEmail",
-    "ParameterValue": "aws-log-archive@example.com"
+    "ParameterValue": "aws-log-archive@example.com",
+    "_comment": "Must match AWS Organizations email exactly"
   },
   {
     "ParameterKey": "AuditAccountEmail",
-    "ParameterValue": "aws-audit@example.com"
+    "ParameterValue": "aws-audit@example.com",
+    "_comment": "Must match AWS Organizations email exactly"
   },
   {
     "ParameterKey": "ControlTowerEnabled",
-    "ParameterValue": "Yes"
+    "ParameterValue": "Yes",
+    "_comment": "Set to Yes if using AWS Control Tower"
   },
   {
     "ParameterKey": "EnableDiagnosticsPack",
@@ -53,11 +69,13 @@
   },
   {
     "ParameterKey": "AcceleratorPrefix",
-    "ParameterValue": "AWSAccelerator"
+    "ParameterValue": "AWSAccelerator",
+    "_comment": "Prefix for LZA resources in Management Account. Different from AcceleratorQualifier."
   },
   {
     "ParameterKey": "ConfigurationRepositoryLocation",
-    "ParameterValue": "s3"
+    "ParameterValue": "s3",
+    "_comment": "Must be 's3' - LZA auto-creates config bucket"
   },
   {
     "ParameterKey": "UseExistingConfigRepo",
