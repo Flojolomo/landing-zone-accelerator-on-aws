@@ -19,14 +19,19 @@ import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
+import { ControlTowerLandingZoneConfig } from '@aws-accelerator/config';
 import { Bucket, BucketEncryptionType, PipelineNotification } from '@aws-accelerator/constructs';
+import {
+  CONTROL_TOWER_LANDING_ZONE_VERSION,
+  getGlobalRegion,
+  getNodeRuntimeActivationCommand,
+  getNodeVersion,
+} from '@aws-accelerator/utils';
+import { Repository } from '@aws-cdk-extensions/cdk-extensions';
+import { version } from '../../../../package.json';
 import { AcceleratorStage } from './accelerator-stage';
 import * as config_repository from './config-repository';
 import { AcceleratorToolkitCommand } from './toolkit';
-import { Repository } from '@aws-cdk-extensions/cdk-extensions';
-import { CONTROL_TOWER_LANDING_ZONE_VERSION, getGlobalRegion, getNodeVersion } from '@aws-accelerator/utils';
-import { ControlTowerLandingZoneConfig } from '@aws-accelerator/config';
-import { version } from '../../../../package.json';
 export interface AcceleratorPipelineProps {
   readonly toolkitRole: cdk.aws_iam.Role;
   readonly sourceRepository: string;
@@ -333,7 +338,7 @@ export class AcceleratorPipeline extends Construct {
     if (this.props.sourceBucketKmsKeyArn) {
       this.pipelineRole.addToPolicy(
         new cdk.aws_iam.PolicyStatement({
-          actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+          actions: ['kms:Decrypt', 'kms:GenerateDataKey', 'kms:DescribeKey'],
           resources: [this.props.sourceBucketKmsKeyArn],
         }),
       );
@@ -455,12 +460,16 @@ export class AcceleratorPipeline extends Construct {
         version: 0.2,
         phases: {
           install: {
-            'runtime-versions': {
-              nodejs: getNodeVersion(),
-            },
+            // Activate the Node.js runtime already baked into the CodeBuild image via PATH
+            // instead of CodeBuild's `runtime-versions` selector. Selecting a non-default
+            // major through `runtime-versions` re-provisions the runtime on every build
+            // (~60s); the PATH switch is instant. See getNodeRuntimeActivationCommand.
+            commands: [getNodeRuntimeActivationCommand()],
           },
           pre_build: {
             commands: [
+              'node -v',
+              'ulimit -n 65535',
               `export WORK_DIR=$CODEBUILD_SRC_DIR/source/packages/@aws-accelerator/accelerator
                export ARCHIVE_NAME="\${ACCELERATOR_STAGE}.tgz"
                export DIFFS_DIR="${this.diffS3Uri}"
@@ -473,16 +482,26 @@ export class AcceleratorPipeline extends Construct {
               'env',
               `"\${WORK_DIR}/scripts/prepare-stage.sh"`,
               `cd $WORK_DIR;`,
-              `RUNNER_ARGS="--partition ${cdk.Aws.PARTITION} --region ${cdk.Aws.REGION} --config-dir $CODEBUILD_SRC_DIR_Config --stage $ACCELERATOR_STAGE --prefix ${props.prefixes.accelerator}"`,
-              `if ${this.props.useExistingRoles}; then RUNNER_ARGS="$RUNNER_ARGS --use-existing-roles"; fi`,
-              `set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS;`,
+              `echo "=========================================="`,
+              `echo "Verbose logs are being sent to CloudWatch Logs"`,
+              `echo "Log Group: ${this.props.qualifier ?? props.prefixes.accelerator}-Module-Verbose-Logs"`,
+              `echo "Log Stream: $ACCELERATOR_STAGE/<timestamp>-${props.pipelineAccountId}"`,
+              `echo "For detailed troubleshooting, view logs in CloudWatch Logs console"`,
+              `echo "=========================================="`,
               `set -e && ./scripts/bootstrap_management_before_prepare.sh ${globalRegion};`,
+              `yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ${cdk.Aws.PARTITION} --region ${cdk.Aws.REGION} --stage $ACCELERATOR_STAGE --accelerator-prefix $ACCELERATOR_PREFIX --verbose`,
               `if [ "\${ACCELERATOR_STAGE}" = "pre-approval" ]; then
+                cd $WORK_DIR;
                 mkdir rawDiff;
                 cd rawDiff;
                 aws s3 sync "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/" .;
-                for file in ./*.tgz; do tar -xf "$file" -C .; done;
-                for file in ./*.diff; do cat "$file"; done;
+                for file in ./*.tgz; do if command -v pigz &>/dev/null; then pigz -dc "$file" | tar xf - -C .; else tar -xf "$file" -C .; fi; done;
+                for file in ./*.diff; do cat "$file"; echo; done;
+                for file in ./*.module.diff; do cat "$file"; done;
+                cd $WORK_DIR;
+                yarn run ts-node --cwdMode --transpile-only generate-diff-viewer-cli.ts rawDiff diff-viewer.html;
+                aws s3 cp diff-viewer.html "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html";
+                echo "Download with: aws s3 cp \${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html ./diff-viewer.html";
               fi`,
               'export FULL_SYNTH="true"',
               'if [ $ASEA_MAPPING_BUCKET ]; then aws s3api head-object --bucket $ASEA_MAPPING_BUCKET --key $ASEA_MAPPING_FILE >/dev/null 2>&1 || export FULL_SYNTH="false"; fi;',
@@ -496,20 +515,20 @@ export class AcceleratorPipeline extends Construct {
                     yarn run ts-node --transpile-only cdk.ts $CDK_OPTIONS --config-dir $CODEBUILD_SRC_DIR_Config --partition ${cdk.Aws.PARTITION};
                   fi
                   if [ $FULL_SYNTH = "true" ]; then
-                    set -e && tar -czf cf_$ARCHIVE_NAME -C cdk.out .;
+                    set -e && if command -v pigz &>/dev/null; then tar cf - -C cdk.out . | pigz > cf_$ARCHIVE_NAME; else tar -czf cf_$ARCHIVE_NAME -C cdk.out .; fi;
                   else
                     touch full-synth-false.txt;
                   fi
                   if [ "\${ACCELERATOR_ENABLE_APPROVAL_STAGE}" = "Yes" ] && [ "$ACCELERATOR_STAGE" != "bootstrap" ]; then
-                    tar -czf diff_cdk_out_$ARCHIVE_NAME -C cdk.out .
-                    find cdk.out -type f -name "*.diff" -print0 | tar --transform='s|.*/||' -czf diff_$ARCHIVE_NAME --null -T -
+                    CDK_OPTIONS=deploy yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ${cdk.Aws.PARTITION} --region ${cdk.Aws.REGION} --stage $ACCELERATOR_STAGE --dry-run --diff-output cdk.out/ --verbose || echo "Module dry-run unavailable for stage $ACCELERATOR_STAGE (expected on first deployment)"
+                    find cdk.out -type f \\( -name "*.diff" -o -name "*.diff.json" -o -name "*.module.diff" \\) -print0 | { if command -v pigz &>/dev/null; then tar --transform='s|.*/||' -cf - --null -T - | pigz > diff_$ARCHIVE_NAME; else tar --transform='s|.*/||' -czf diff_$ARCHIVE_NAME --null -T -; fi; }
                     aws s3 cp diff_$ARCHIVE_NAME $DIFFS_DIR/$CODEPIPELINE_EXECUTION_ID/
                   fi
                else
                 eval ARTIFACTS='$'CODEBUILD_SRC_DIR_$STAGE_ARTIFACT
                 if [ -f "\${ARTIFACTS}/cf_\${ARCHIVE_NAME}" ]; then
                      mkdir -p cdk.out
-                     tar -xzf $ARTIFACTS/cf_$ARCHIVE_NAME -C cdk.out;
+                     if command -v pigz &>/dev/null; then pigz -dc $ARTIFACTS/cf_$ARCHIVE_NAME | tar xf - -C cdk.out; else tar -xzf $ARTIFACTS/cf_$ARCHIVE_NAME -C cdk.out; fi;
                  else
                     set -e && yarn run ts-node --transpile-only cdk.ts synth --stage $ACCELERATOR_STAGE --config-dir $CODEBUILD_SRC_DIR_Config --partition ${cdk.Aws.PARTITION};
                  fi
@@ -518,10 +537,13 @@ export class AcceleratorPipeline extends Construct {
                fi`,
             ],
           },
+          post_build: {
+            commands: [`"$WORK_DIR/scripts/collect-diagnostics.sh"`],
+          },
         },
         artifacts: {
           'base-directory': '$WORK_DIR',
-          files: ['cf_$ARCHIVE_NAME', 'diff_cdk_out_$ARCHIVE_NAME', 'full-synth-false.txt'],
+          files: ['cf_$ARCHIVE_NAME', 'full-synth-false.txt'],
         },
       }),
       environment: {
@@ -640,6 +662,14 @@ export class AcceleratorPipeline extends Construct {
           SkipAcceleratorPrerequisites: {
             type: cdk.aws_codebuild.BuildEnvironmentVariableType.PLAINTEXT,
             value: 'true',
+          },
+          VERBOSE_LOG_GROUP_NAME: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: `${this.props.qualifier ?? props.prefixes.accelerator}-Module-Verbose-Logs`,
+          },
+          MODULE_RESOURCE_PREFIX: {
+            type: codebuild.BuildEnvironmentVariableType.PLAINTEXT,
+            value: this.props.qualifier ?? props.prefixes.accelerator,
           },
           ...enableSingleAccountModeEnvVariables,
           ...pipelineAccountEnvVariables,

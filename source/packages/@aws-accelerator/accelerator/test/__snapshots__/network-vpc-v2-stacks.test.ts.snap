@@ -163,7 +163,7 @@ exports[`NetworkVpcV2Stacks > Construct(LbStack-Network-us-east-1-Network-Second
         "Description": "Custom resource provider to put cross-account ssm parameter value",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -290,7 +290,7 @@ exports[`NetworkVpcV2Stacks > Construct(LbStack-Network-us-east-1-Network-Second
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-LoadBalancersStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -328,7 +328,7 @@ exports[`NetworkVpcV2Stacks > Construct(LbStack-Network-us-east-1-Network-Second
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-LoadBalancersStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -1268,7 +1268,7 @@ exports[`NetworkVpcV2Stacks > Construct(NackStack-Network-us-east-1-Network-Seco
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-NaclsStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -2087,7 +2087,7 @@ exports[`NetworkVpcV2Stacks > Construct(NackStack-Network-us-east-1-Network-Seco
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-NaclsStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -2154,7 +2154,7 @@ exports[`NetworkVpcV2Stacks > Construct(RouteEntriesStack-Network-us-east-1-Netw
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -2222,7 +2222,7 @@ exports[`NetworkVpcV2Stacks > Construct(RouteEntriesStack-Network-us-east-1-Netw
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -2420,7 +2420,7 @@ exports[`NetworkVpcV2Stacks > Construct(RouteEntriesStack-Network-us-east-1-Netw
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-RouteEntriesStack-Network-Inspection-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -2509,7 +2509,7 @@ exports[`NetworkVpcV2Stacks > Construct(RouteEntriesStack-Network-us-east-1-Netw
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-RouteEntriesStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -2598,13 +2598,265 @@ exports[`NetworkVpcV2Stacks > Construct(RouteEntriesStack-Network-us-east-1-Netw
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-RouteEntriesStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
     "SsmParamStackId521A78D3": {
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-RouteEntriesStack-Network-Secondary-V2-555555555555-us-east-1/stack-id",
+        "Type": "String",
+        "Value": {
+          "Ref": "AWS::StackId",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+  },
+}
+`;
+
+exports[`NetworkVpcV2Stacks > Construct(RouteTableStack-Network-us-east-1-Network-Inspection-V2):  Snapshot Test 1`] = `
+{
+  "Metadata": {
+    "lzaLookup": {
+      "accountName": "Network",
+      "region": "us-east-1",
+      "stackGeneration": "v2",
+    },
+  },
+  "Parameters": {
+    "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2idC96584B6F00A464EAD1953AFF4B05118Parameter": {
+      "Default": "/accelerator/network/vpc/Network-Inspection-V2/id",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+    "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2internetGatewayidC96584B6F00A464EAD1953AFF4B05118Parameter": {
+      "Default": "/accelerator/network/vpc/Network-Inspection-V2/internetGateway/id",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "NetworkInspectionV2VpcNetworkInspectionARouteTable": {
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "route-table",
+          "routeTableName": "Network-Inspection-A",
+          "vpcName": "Network-Inspection-V2",
+        },
+      },
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-A",
+          },
+        ],
+        "VpcId": {
+          "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2idC96584B6F00A464EAD1953AFF4B05118Parameter",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "NetworkInspectionV2VpcNetworkInspectionBRouteTable": {
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "route-table",
+          "routeTableName": "Network-Inspection-B",
+          "vpcName": "Network-Inspection-V2",
+        },
+      },
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-B",
+          },
+        ],
+        "VpcId": {
+          "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2idC96584B6F00A464EAD1953AFF4B05118Parameter",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "NetworkInspectionV2VpcNetworkInspectionGatewayRouteTable": {
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "route-table",
+          "routeTableName": "Network-Inspection-Gateway",
+          "vpcName": "Network-Inspection-V2",
+        },
+      },
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-Gateway",
+          },
+        ],
+        "VpcId": {
+          "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2idC96584B6F00A464EAD1953AFF4B05118Parameter",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "NetworkInspectionV2VpcNetworkInspectionGatewayRtGatewayAssociation": {
+      "DependsOn": [
+        "NetworkInspectionV2VpcNetworkInspectionGatewayRouteTable",
+      ],
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "route-table-gateway-association",
+          "routeTableName": "Network-Inspection-Gateway",
+          "vpcName": "Network-Inspection-V2",
+        },
+      },
+      "Properties": {
+        "GatewayId": {
+          "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2internetGatewayidC96584B6F00A464EAD1953AFF4B05118Parameter",
+        },
+        "RouteTableId": {
+          "Ref": "NetworkInspectionV2VpcNetworkInspectionGatewayRouteTable",
+        },
+      },
+      "Type": "AWS::EC2::GatewayRouteTableAssociation",
+    },
+    "NetworkInspectionV2VpcNetworkInspectionLocalRtARouteTable": {
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "route-table",
+          "routeTableName": "Network-Inspection-Local-Rt-A",
+          "vpcName": "Network-Inspection-V2",
+        },
+      },
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-Local-Rt-A",
+          },
+        ],
+        "VpcId": {
+          "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2idC96584B6F00A464EAD1953AFF4B05118Parameter",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "NetworkInspectionV2VpcNetworkInspectionTgwARouteTable": {
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "route-table",
+          "routeTableName": "Network-Inspection-Tgw-A",
+          "vpcName": "Network-Inspection-V2",
+        },
+      },
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-Tgw-A",
+          },
+        ],
+        "VpcId": {
+          "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2idC96584B6F00A464EAD1953AFF4B05118Parameter",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "NetworkInspectionV2VpcNetworkInspectionTgwBRouteTable": {
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "route-table",
+          "routeTableName": "Network-Inspection-Tgw-B",
+          "vpcName": "Network-Inspection-V2",
+        },
+      },
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-Tgw-B",
+          },
+        ],
+        "VpcId": {
+          "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionV2idC96584B6F00A464EAD1953AFF4B05118Parameter",
+        },
+      },
+      "Type": "AWS::EC2::RouteTable",
+    },
+    "SsmParamAcceleratorVersionFF83282D": {
+      "Properties": {
+        "Name": "/accelerator/AWSAccelerator-RouteTablesStack-Network-Inspection-V2-555555555555-us-east-1/version",
+        "Type": "String",
+        "Value": "1.16.3",
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkInspectionV2NetworkInspectionARouteTableId773D0400": {
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-Inspection-V2/routeTable/Network-Inspection-A/id",
+        "Type": "String",
+        "Value": {
+          "Ref": "NetworkInspectionV2VpcNetworkInspectionARouteTable",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkInspectionV2NetworkInspectionBRouteTableIdECEEC373": {
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-Inspection-V2/routeTable/Network-Inspection-B/id",
+        "Type": "String",
+        "Value": {
+          "Ref": "NetworkInspectionV2VpcNetworkInspectionBRouteTable",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkInspectionV2NetworkInspectionGatewayRouteTableId52A4293A": {
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-Inspection-V2/routeTable/Network-Inspection-Gateway/id",
+        "Type": "String",
+        "Value": {
+          "Ref": "NetworkInspectionV2VpcNetworkInspectionGatewayRouteTable",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkInspectionV2NetworkInspectionLocalRtARouteTableId3307FA60": {
+      "DependsOn": [
+        "SsmParamNetworkInspectionV2NetworkInspectionGatewayRouteTableId52A4293A",
+      ],
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-Inspection-V2/routeTable/Network-Inspection-Local-Rt-A/id",
+        "Type": "String",
+        "Value": {
+          "Ref": "NetworkInspectionV2VpcNetworkInspectionLocalRtARouteTable",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkInspectionV2NetworkInspectionTgwARouteTableId3AE38B03": {
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-Inspection-V2/routeTable/Network-Inspection-Tgw-A/id",
+        "Type": "String",
+        "Value": {
+          "Ref": "NetworkInspectionV2VpcNetworkInspectionTgwARouteTable",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkInspectionV2NetworkInspectionTgwBRouteTableIdB791A77F": {
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-Inspection-V2/routeTable/Network-Inspection-Tgw-B/id",
+        "Type": "String",
+        "Value": {
+          "Ref": "NetworkInspectionV2VpcNetworkInspectionTgwBRouteTable",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamStackId521A78D3": {
+      "Properties": {
+        "Name": "/accelerator/AWSAccelerator-RouteTablesStack-Network-Inspection-V2-555555555555-us-east-1/stack-id",
         "Type": "String",
         "Value": {
           "Ref": "AWS::StackId",
@@ -2761,7 +3013,7 @@ exports[`NetworkVpcV2Stacks > Construct(RouteTableStack-Network-us-east-1-Networ
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-RouteTablesStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -2949,7 +3201,7 @@ exports[`NetworkVpcV2Stacks > Construct(RouteTableStack-Network-us-east-1-Networ
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-RouteTablesStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -3027,7 +3279,7 @@ exports[`NetworkVpcV2Stacks > Construct(SecurityGroupStack-Network-us-east-1-Net
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SecurityGroupsStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -3065,7 +3317,7 @@ exports[`NetworkVpcV2Stacks > Construct(SecurityGroupStack-Network-us-east-1-Net
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SecurityGroupsStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -3103,7 +3355,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetShareStack-Network-us-east-1-Netwo
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SubnetsShareStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -3153,7 +3405,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetShareStack-Network-us-east-1-Netwo
         "Description": "Custom resource provider to put cross-account ssm parameter value",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -3359,7 +3611,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetShareStack-Network-us-east-1-Netwo
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SubnetsShareStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -3420,7 +3672,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetStack-Network-us-east-1-Network-Se
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -4139,7 +4391,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetStack-Network-us-east-1-Network-Se
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SubnetsStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -4448,7 +4700,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetStack-Network-us-east-1-Network-Se
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -5107,7 +5359,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetStack-Network-us-east-1-Network-Se
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SubnetsStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -5599,7 +5851,7 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetStack-SharedServices-us-east-1-Sha
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SubnetsStack-SharedServices-Main-V2-444444444444-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -5708,6 +5960,123 @@ exports[`NetworkVpcV2Stacks > Construct(SubnetStack-SharedServices-us-east-1-Sha
     "SsmParamStackId521A78D3": {
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-SubnetsStack-SharedServices-Main-V2-444444444444-us-east-1/stack-id",
+        "Type": "String",
+        "Value": {
+          "Ref": "AWS::StackId",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+  },
+}
+`;
+
+exports[`NetworkVpcV2Stacks > Construct(VpcStack-Network-us-east-1-Network-FlowLogsS3Only-V2):  Snapshot Test 1`] = `
+{
+  "Metadata": {
+    "lzaLookup": {
+      "accountName": "Network",
+      "region": "us-east-1",
+      "stackGeneration": "v2",
+    },
+  },
+  "Parameters": {
+    "SsmParameterValueacceleratorkmslambdakeyarnC96584B6F00A464EAD1953AFF4B05118Parameter": {
+      "Default": "/accelerator/kms/lambda/key-arn",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+    "SsmParameterValueacceleratorvpcflowlogsdestinationbucketarnC96584B6F00A464EAD1953AFF4B05118Parameter": {
+      "Default": "/accelerator/vpc/flow-logs/destination/bucket/arn",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+  },
+  "Resources": {
+    "NetworkFlowLogsS3OnlyV2Vpc": {
+      "Metadata": {
+        "lzaLookup": {
+          "resourceType": "vpc",
+          "vpcName": "Network-FlowLogsS3Only-V2",
+        },
+      },
+      "Properties": {
+        "CidrBlock": "172.30.0.0/24",
+        "EnableDnsHostnames": true,
+        "EnableDnsSupport": true,
+        "InstanceTenancy": "default",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-FlowLogsS3Only-V2",
+          },
+        ],
+      },
+      "Type": "AWS::EC2::VPC",
+    },
+    "S3FlowLog": {
+      "Metadata": {
+        "lzaLookup": {
+          "maxAggregationInterval": 60,
+          "resourceType": "s3-flow-logs",
+          "trafficType": "ALL",
+          "vpcName": "Network-FlowLogsS3Only-V2",
+        },
+      },
+      "Properties": {
+        "LogDestination": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "SsmParameterValueacceleratorvpcflowlogsdestinationbucketarnC96584B6F00A464EAD1953AFF4B05118Parameter",
+              },
+              "/vpc-flow-logs/",
+            ],
+          ],
+        },
+        "LogDestinationType": "s3",
+        "MaxAggregationInterval": 60,
+        "ResourceId": {
+          "Ref": "NetworkFlowLogsS3OnlyV2Vpc",
+        },
+        "ResourceType": "VPC",
+        "TrafficType": "ALL",
+      },
+      "Type": "AWS::EC2::FlowLog",
+    },
+    "SsmParamAcceleratorVersionFF83282D": {
+      "Properties": {
+        "Name": "/accelerator/AWSAccelerator-VpcStack-Network-FlowLogsS3Only-V2-555555555555-us-east-1/version",
+        "Type": "String",
+        "Value": "1.16.3",
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkFlowLogsS3OnlyV2VpcId1C7DB942": {
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-FlowLogsS3Only-V2/id",
+        "Type": "String",
+        "Value": {
+          "Ref": "NetworkFlowLogsS3OnlyV2Vpc",
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamNetworkFlowLogsS3OnlyV2VpcIpv4CidrBlockC9F7B1AD": {
+      "Properties": {
+        "Name": "/accelerator/network/vpc/Network-FlowLogsS3Only-V2/cidr/ipv4",
+        "Type": "String",
+        "Value": {
+          "Fn::GetAtt": [
+            "NetworkFlowLogsS3OnlyV2Vpc",
+            "CidrBlock",
+          ],
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
+    "SsmParamStackId521A78D3": {
+      "Properties": {
+        "Name": "/accelerator/AWSAccelerator-VpcStack-Network-FlowLogsS3Only-V2-555555555555-us-east-1/stack-id",
         "Type": "String",
         "Value": {
           "Ref": "AWS::StackId",
@@ -5959,7 +6328,7 @@ exports[`NetworkVpcV2Stacks > Construct(VpcStack-Network-us-east-1-Network-Secon
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-VpcStack-Network-Secondary-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -6268,7 +6637,7 @@ exports[`NetworkVpcV2Stacks > Construct(VpcStack-Network-us-east-1-Network-Secon
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-VpcStack-Network-Secondary-V2-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },

@@ -18,6 +18,7 @@ import * as path from 'path';
 import { NagSuppressions } from 'cdk-nag';
 import { DEFAULT_LAMBDA_RUNTIME } from '../../utils/lib/lambda';
 import { AcceleratorResourcePrefixes } from '../utils/app-utils';
+import { IIpamAllocationConfig } from '@aws-accelerator/config';
 
 export interface ValidateEnvironmentConfigProps {
   readonly acceleratorConfigTable: cdk.aws_dynamodb.ITable;
@@ -45,6 +46,12 @@ export interface ValidateEnvironmentConfigProps {
   readonly prefixes: AcceleratorResourcePrefixes;
   readonly vpcsCidrs: { vpcName: string; logicalId: string; cidrs: string[]; parameterName: string }[];
   readonly transitGateways: { transitGatewayName: string; logicalId: string; multicastSupport: string | undefined }[];
+  readonly vpcsIpamAllocations: {
+    vpcName: string;
+    logicalId: string;
+    ipamAllocations: IIpamAllocationConfig[];
+    parameterName: string;
+  }[];
   readonly useV2StacksValue: boolean;
   readonly v2StacksParamName: string;
 }
@@ -66,6 +73,7 @@ export class ValidateEnvironmentConfig extends Construct {
       sid: 'OrganizationsLookup',
       actions: [
         'organizations:ListAccounts',
+        'organizations:DescribeAccount',
         'servicecatalog:SearchProvisionedProducts',
         'organizations:ListChildren',
         'organizations:ListPoliciesForTarget',
@@ -110,6 +118,7 @@ export class ValidateEnvironmentConfig extends Construct {
       actions: ['ssm:GetParameter'],
       resources: [
         `arn:${props.partition}:ssm:${props.region}:${props.managementAccountId}:parameter${props.prefixes.ssmParamName}/validation/*/network/vpc/*/deployedCidrs`,
+        `arn:${props.partition}:ssm:${props.region}:${props.managementAccountId}:parameter${props.prefixes.ssmParamName}/validation/*/network/vpc/*/deployedIpamAllocations`,
         `arn:${props.partition}:ssm:${props.region}:${props.managementAccountId}:parameter${props.v2StacksParamName}`,
         `arn:${props.partition}:ssm:${props.region}:${props.managementAccountId}:parameter${props.prefixes.ssmParamName}/validation/*/network/tgw/*/multicastSupport`,
       ],
@@ -164,12 +173,13 @@ export class ValidateEnvironmentConfig extends Construct {
         partition: props.partition,
         serviceControlPolicies: props.serviceControlPolicies,
         skipScpValidation: process.env['ACCELERATOR_SKIP_SCP_VALIDATION'] ?? 'no',
-        maxOuAttachedScps: process.env['ACCELERATOR_MAX_OU_ATTACHED_SCPS'] ?? 5,
-        maxAccountAttachedScps: process.env['ACCELERATOR_MAX_ACCOUNT_ATTACHED_SCPS'] ?? 5,
+        maxOuAttachedScps: process.env['ACCELERATOR_MAX_OU_ATTACHED_SCPS'] ?? 10,
+        maxAccountAttachedScps: process.env['ACCELERATOR_MAX_ACCOUNT_ATTACHED_SCPS'] ?? 10,
         policyTagKey: props.policyTagKey,
         uuid: uuidv4(), // Generates a new UUID to force the resource to update,
         vpcCidrs: props.vpcsCidrs,
         transitGateways: props.transitGateways,
+        vpcIpamAllocations: props.vpcsIpamAllocations,
         useV2StacksValue: props.useV2StacksValue,
         v2StacksParamName: props.v2StacksParamName,
       },

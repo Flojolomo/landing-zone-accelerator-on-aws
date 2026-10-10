@@ -25,6 +25,7 @@ import { CloudFormationClient, DescribeStacksCommand } from '@aws-sdk/client-clo
 import { SSMClient, GetParameterCommand, ParameterNotFound, PutParameterCommand } from '@aws-sdk/client-ssm';
 import {
   Account,
+  DescribeAccountCommand,
   ListAccountsForParentCommand,
   ListChildrenCommand,
   ListOrganizationalUnitsForParentCommand,
@@ -38,6 +39,7 @@ import {
 import { throttlingBackOff } from '@aws-accelerator/utils/lib/throttle';
 import { CloudFormationCustomResourceEvent } from '@aws-accelerator/utils/lib/common-types';
 import { getGlobalRegion, setRetryStrategy } from '@aws-accelerator/utils/lib/common-functions';
+import { IIpamAllocationConfig } from '@aws-accelerator/config';
 
 type scpTargetType = 'ou' | 'account';
 
@@ -46,6 +48,12 @@ type serviceControlPolicyType = {
   targetType: scpTargetType;
   strategy: string;
   targets: { name: string; id: string }[];
+};
+type IpamAllocationConfig = {
+  vpcName: string;
+  ipamAllocations: IIpamAllocationConfig[];
+  logicalId: string;
+  parameterName: string;
 };
 
 const marshallOptions = {
@@ -85,6 +93,107 @@ type AwsOrganizationalUnitKeys = {
   awsKey: string;
 };
 
+/**
+ * Poll cadence for waiting on a PENDING_ACTIVATION account to reach ACTIVE.
+ *
+ * The validate-environment custom resource is an onEvent-only provider with a hard 15-minute Lambda
+ * timeout, and the poll blocks the invocation. Because several accounts can be PENDING_ACTIVATION at
+ * once (batch onboarding), the total time spent sleeping is bounded by a single shared wall-clock
+ * deadline (ACCOUNT_ACTIVATION_TOTAL_BUDGET_MS) computed once per invocation and passed to every
+ * call, so N sequential per-account polls can never accumulate past the Lambda timeout. The
+ * per-account maxAttempts is a secondary safety bound.
+ */
+const ACCOUNT_ACTIVATION_POLL_INTERVAL_MS = 30_000;
+const ACCOUNT_ACTIVATION_MAX_ATTEMPTS = 10;
+const ACCOUNT_ACTIVATION_TOTAL_BUDGET_MS = 600_000; // 10 minutes shared across all accounts (< 15-min Lambda timeout)
+
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+/**
+ * Computes the shared activation deadline for one handler invocation. Pass the result to every
+ * getAccountStateValidationError call so the aggregate poll time stays within the Lambda timeout.
+ */
+export function getAccountActivationDeadlineEpochMs(): number {
+  return Date.now() + ACCOUNT_ACTIVATION_TOTAL_BUDGET_MS;
+}
+
+/**
+ * Returns an account validation error when its AWS Organizations lifecycle state is not usable.
+ *
+ * ACTIVE passes immediately. A newly created account can sit in the transient PENDING_ACTIVATION
+ * state for several minutes (notably in isolated/air-gapped partitions). Rather than failing Prepare
+ * outright OR letting it proceed while it is not yet assumable (which would make a downstream stage
+ * fail to assume-role into it), we poll DescribeAccount until it becomes ACTIVE. Polling stops at the
+ * first of: ACTIVE (pass), a terminal non-ACTIVE state (fail), maxAttempts, or the shared deadline —
+ * so the sequential per-account waits across a whole invocation cannot exceed the Lambda timeout. If
+ * it does not activate within the window it is reported as an error so the pipeline fails fast. Every
+ * other non-ACTIVE state (e.g. SUSPENDED, PENDING_CLOSURE) is reported immediately without polling.
+ * Lifecycle state is resolved as State ?? Status to stay correct across the Organizations
+ * Status->State field migration.
+ *
+ * @param accountType Configured account category used in the validation message
+ * @param email Configured account email
+ * @param account AWS Organizations account response
+ * @param orgClient Organizations client used to poll DescribeAccount
+ * @param options Optional poll interval / attempt / shared-deadline overrides (deadline is shared
+ *   across accounts in production; interval and maxAttempts are primarily for tests)
+ * @returns Validation error text, or undefined once the account is ACTIVE
+ */
+export async function getAccountStateValidationError(
+  accountType: 'Mandatory' | 'Workload',
+  email: string,
+  account: Account,
+  orgClient: OrganizationsClient,
+  options: { pollIntervalMs?: number; maxAttempts?: number; deadlineEpochMs?: number } = {},
+): Promise<string | undefined> {
+  const pollIntervalMs = options.pollIntervalMs ?? ACCOUNT_ACTIVATION_POLL_INTERVAL_MS;
+  const maxAttempts = options.maxAttempts ?? ACCOUNT_ACTIVATION_MAX_ATTEMPTS;
+  const deadlineEpochMs = options.deadlineEpochMs ?? getAccountActivationDeadlineEpochMs();
+
+  let state: string | undefined = account.State ?? account.Status;
+  if (state === 'ACTIVE') {
+    return undefined;
+  }
+  if (state !== 'PENDING_ACTIVATION') {
+    return `${accountType} account ${email} is in ${state}`;
+  }
+
+  const accountId = account.Id;
+  if (!accountId) {
+    return `${accountType} account ${email} is in PENDING_ACTIVATION and has no account id to poll`;
+  }
+
+  console.warn(
+    `${accountType} account ${email} (${accountId}) is in PENDING_ACTIVATION; polling for it to become ACTIVE (up to ${maxAttempts} attempts, bounded by the shared activation deadline) before allowing the pipeline to proceed.`,
+  );
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Fresh authoritative check (the ListAccountsForParent snapshot may be stale).
+    const describeAccountResponse = await throttlingBackOff(() =>
+      orgClient.send(new DescribeAccountCommand({ AccountId: accountId })),
+    );
+    state = describeAccountResponse.Account?.State ?? describeAccountResponse.Account?.Status;
+    console.log(`${accountType} account ${email} lifecycle state after attempt ${attempt}/${maxAttempts}: ${state}`);
+    if (state === 'ACTIVE') {
+      return undefined;
+    }
+    if (state !== 'PENDING_ACTIVATION') {
+      // Transitioned to a terminal non-ACTIVE state (e.g. SUSPENDED) while we were waiting.
+      return `${accountType} account ${email} is in ${state}`;
+    }
+    // Stop before sleeping again if we are out of attempts or the shared invocation budget is spent.
+    const remainingMs = deadlineEpochMs - Date.now();
+    if (attempt >= maxAttempts || remainingMs <= 0) {
+      break;
+    }
+    await sleep(Math.min(pollIntervalMs, remainingMs));
+  }
+
+  return `${accountType} account ${email} did not reach ACTIVE within the activation wait window (last state: ${state})`;
+}
+
 type DDBItem = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
@@ -122,9 +231,10 @@ export async function handler(event: CloudFormationCustomResourceEvent): Promise
   const stackName = event.ResourceProperties['stackName'];
   const serviceControlPolicies: serviceControlPolicyType[] = event.ResourceProperties['serviceControlPolicies'];
   const skipScpValidation = event.ResourceProperties['skipScpValidation'];
-  const maxOuAttachedScps = event.ResourceProperties['maxOuAttachedScps'] ?? 5;
-  const maxAccountAttachedScps = event.ResourceProperties['maxAccountAttachedScps'] ?? 5;
+  const maxOuAttachedScps = event.ResourceProperties['maxOuAttachedScps'] ?? 10;
+  const maxAccountAttachedScps = event.ResourceProperties['maxAccountAttachedScps'] ?? 10;
   const vpcCidrs = event.ResourceProperties['vpcCidrs'];
+  const vpcIpamAllocations = event.ResourceProperties['vpcIpamAllocations'];
   const transitGateways = event.ResourceProperties['transitGateways'];
   const solutionId = process.env['SOLUTION_ID'];
   const useV2StacksValue = event.ResourceProperties['useV2StacksValue'];
@@ -182,7 +292,15 @@ export async function handler(event: CloudFormationCustomResourceEvent): Promise
       } else {
         console.log('No vpcCidrs provided', vpcCidrs);
       }
-
+      const ipamStart = Date.now();
+      if (isIpamAllocationConfigArray(vpcIpamAllocations)) {
+        await validateIpamAllocationAppendOnly(vpcIpamAllocations, validationErrors);
+      } else {
+        console.log('No vpcIpamAllocations provided', vpcIpamAllocations);
+      }
+      console.log(
+        `validateIpamAllocationAppendOnly: vpcs=${vpcIpamAllocations.length}, elapsedMs=${Date.now() - ipamStart}`,
+      );
       const useV2StacksErrors = await validateUseV2StacksFlag(useV2StacksValue, v2StacksParamName);
       validationErrors.push(...useV2StacksErrors);
 
@@ -203,6 +321,9 @@ export async function handler(event: CloudFormationCustomResourceEvent): Promise
       validationErrors.push(...validateAllAwsAccountsAreInConfig);
 
       // find organization accounts that need to be created
+      // Single shared deadline so the per-account PENDING_ACTIVATION polls below cannot accumulate
+      // past the validate-environment Lambda's 15-minute timeout, even with many accounts activating.
+      const accountActivationDeadlineEpochMs = getAccountActivationDeadlineEpochMs();
       if (mandatoryAccounts) {
         for (const mandatoryAccount of mandatoryAccounts) {
           const awsOuKey = configAllOuKeys.find(ouKeyItem => ouKeyItem.acceleratorKey === mandatoryAccount['ouName']);
@@ -211,10 +332,15 @@ export async function handler(event: CloudFormationCustomResourceEvent): Promise
               item => item.Email?.toLocaleLowerCase() == mandatoryAccount['acceleratorKey'].toLocaleLowerCase(),
             );
             if (mandatoryOrganizationAccount) {
-              if (mandatoryOrganizationAccount.Status !== 'ACTIVE') {
-                validationErrors.push(
-                  `Mandatory account ${mandatoryAccount['acceleratorKey']} is in ${mandatoryOrganizationAccount.Status}`,
-                );
+              const accountStateError = await getAccountStateValidationError(
+                'Mandatory',
+                mandatoryAccount['acceleratorKey'],
+                mandatoryOrganizationAccount,
+                organizationsClient,
+                { deadlineEpochMs: accountActivationDeadlineEpochMs },
+              );
+              if (accountStateError) {
+                validationErrors.push(accountStateError);
               }
             } else {
               orgAccountsToAdd.push(mandatoryAccount);
@@ -230,10 +356,15 @@ export async function handler(event: CloudFormationCustomResourceEvent): Promise
               item => item.Email?.toLocaleLowerCase() == workloadAccount['acceleratorKey'].toLocaleLowerCase(),
             );
             if (organizationAccount) {
-              if (organizationAccount.Status !== 'ACTIVE') {
-                validationErrors.push(
-                  `Workload account ${workloadAccount['acceleratorKey']} is in ${organizationAccount.Status}`,
-                );
+              const accountStateError = await getAccountStateValidationError(
+                'Workload',
+                workloadAccount['acceleratorKey'],
+                organizationAccount,
+                organizationsClient,
+                { deadlineEpochMs: accountActivationDeadlineEpochMs },
+              );
+              if (accountStateError) {
+                validationErrors.push(accountStateError);
               }
             } else {
               orgAccountsToAdd.push(workloadAccount);
@@ -323,7 +454,7 @@ function exceedsMaxScpLimit(
 }
 
 /**
- * Function to validate number of SCPs attached to ou and account is not more than 5
+ * Function to validate number of SCPs attached to ou and account does not exceed the configured limit
  * @param organizationsClient
  * @param serviceControlPolicies
  */
@@ -881,6 +1012,28 @@ function isArrayOfType<TItem>(value: unknown, guard: (value: unknown) => value i
 }
 
 const isString = (value: unknown): value is string => typeof value === 'string';
+export function isIpamAllocationConfigArray(value: unknown): value is IpamAllocationConfig[] {
+  return isArrayOfType(value, isIpamAllocationConfig);
+}
+export function isIpamAllocationConfig(value: unknown): value is IpamAllocationConfig {
+  return (
+    typeof value === 'object' &&
+    typeof (value as IpamAllocationConfig).vpcName === 'string' &&
+    typeof (value as IpamAllocationConfig).logicalId === 'string' &&
+    typeof (value as IpamAllocationConfig).parameterName === 'string' &&
+    isArrayOfType((value as IpamAllocationConfig).ipamAllocations, isIpamAllocation)
+  );
+}
+
+export function isIpamAllocation(value: unknown): value is IIpamAllocationConfig {
+  return (
+    typeof value === 'object' &&
+    typeof (value as IIpamAllocationConfig).ipamPoolName === 'string' &&
+    (typeof (value as IIpamAllocationConfig).netmaskLength === 'number' ||
+      typeof (value as IIpamAllocationConfig).netmaskLength === 'string')
+  );
+}
+
 export function isCIDRConfigArray(value: unknown): value is CIDRConfig[] {
   return isArrayOfType(value, isCIDRConfig);
 }
@@ -903,6 +1056,39 @@ async function validateCidrOrder(existingCidrs: CIDRConfig[], errors: string[]) 
     console.log(`CIDRS: ${deployedCidrs?.join(',') ?? '-'} -> ${config.cidrs.join(',')}`);
     if (!isCidrOrderValid(config.vpcName, deployedCidrs, currentCidrs)) {
       const message = `Configuration of VPC ${config.vpcName} changes the order of already deployed CIDRs. This will cause a recreation of said resources!`;
+      console.log(message);
+      errors.push(message);
+    }
+  }
+}
+
+async function validateIpamAllocationAppendOnly(existingIpamAllocations: IpamAllocationConfig[], errors: string[]) {
+  console.log('Validating IPAM allocation changes (append-only)', existingIpamAllocations);
+
+  for (const config of existingIpamAllocations) {
+    console.log(`Validating IPAM allocations for vpc ${config.vpcName}`);
+
+    const currentIpamAllocationsNormalised = ipamAllocationsToKeys(config.ipamAllocations);
+    const deployedIpamAllocationKeysNormalised = await getLastDeployedIpamAllocationsFor(config);
+
+    console.log(`IPAM_ALLOCATIONS: ${deployedIpamAllocationKeysNormalised?.join(',') ?? '-'} 
+    -> ${currentIpamAllocationsNormalised.join(',')}`);
+
+    if (
+      !isIpamAllocationsAppendOnlyValid(
+        config.vpcName,
+        deployedIpamAllocationKeysNormalised,
+        currentIpamAllocationsNormalised,
+      )
+    ) {
+      const message =
+        `Configuration of VPC ${config.vpcName} changes already deployed VPC IPAM allocations` +
+        `LZA supports only appending new allocations to the end of vpc.ipamAllocations. ` +
+        `Changing, removing, reordering, or inserting allocations can be destructive: it may require replacing the VPC ` +
+        `and/or it can change associated CIDR blocks, which can impact existing subnets and IP assignments. ` +
+        `To proceed safely, either append a new allocation, or recreate the VPC via the pipeline ` +
+        `(remove the VPC from the config and deploy to delete it, then add it back with the new allocations and deploy again), ` +
+        `or create a new VPC (new name) with the desired allocations and migrate workloads.`;
       console.log(message);
       errors.push(message);
     }
@@ -942,6 +1128,36 @@ export function isCidrOrderValid(vpcName: string, deployedCidrs: string[], toBeD
   return true;
 }
 
+export function isIpamAllocationsAppendOnlyValid(
+  vpcName: string,
+  deployedIpamAllocationsNormalised: string[],
+  toBeDeployedIpamAllocationsNormalised: string[],
+) {
+  if (!deployedIpamAllocationsNormalised?.length) {
+    console.log(`There is no information on former deployments of IPAM allocations for vpc ${vpcName}.`);
+    return true;
+  }
+
+  if (areArrayContentsEqual(toBeDeployedIpamAllocationsNormalised, deployedIpamAllocationsNormalised)) {
+    console.log('There is no change in the IPAM allocations configuration.');
+    return true;
+  }
+
+  // No deletions allowed
+  if (toBeDeployedIpamAllocationsNormalised.length < deployedIpamAllocationsNormalised.length) {
+    return false;
+  }
+
+  // deployed list must be an exact prefix of current list
+  for (let i = 0; i < deployedIpamAllocationsNormalised.length; i++) {
+    if (deployedIpamAllocationsNormalised[i] !== toBeDeployedIpamAllocationsNormalised[i]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 async function getLastDeployedCIDRsFor(config: CIDRConfig): Promise<string[]> {
   try {
     const cidrsString = await throttlingBackOff(() =>
@@ -957,6 +1173,21 @@ async function getLastDeployedCIDRsFor(config: CIDRConfig): Promise<string[]> {
     console.error('Unabled to load ssm parameter with deployed cidr config', error);
     return [];
   }
+}
+
+async function getLastDeployedIpamAllocationsFor(config: IpamAllocationConfig): Promise<string[]> {
+  try {
+    const resp = await throttlingBackOff(() => ssmClient.send(new GetParameterCommand({ Name: config.parameterName })));
+
+    return resp.Parameter?.Value?.split(',') ?? [];
+  } catch (error) {
+    console.error('Unabled to load ssm parameter with deployed IPAM allocation config', error);
+    return [];
+  }
+}
+
+function ipamAllocationsToKeys(ipamAllocation: IIpamAllocationConfig[]): string[] {
+  return ipamAllocation.map(allocation => `${allocation.ipamPoolName}|${allocation.netmaskLength}`);
 }
 
 type CIDRConfig = {

@@ -13,7 +13,7 @@ export default defineConfig({
       exclude: ['**/*.d.ts', '**/dist/**', '**/node_modules/**'],
       thresholds: {
         branches: 55,
-        functions: 76,
+        functions: 85,
         lines: 63,
         statements: 63,
       },

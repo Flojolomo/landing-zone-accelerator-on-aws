@@ -18,6 +18,7 @@ import {
   Ec2FirewallInstanceConfig,
 } from '../../lib/customizations-config';
 import {
+  InterfaceEndpointServiceConfig,
   NetworkAclInboundRuleConfig,
   NetworkAclOutboundRuleConfig,
   NetworkAclSubnetSelection,
@@ -25,6 +26,7 @@ import {
   NfwFirewallConfig,
   PrefixListSourceConfig,
   ResolverRuleConfig,
+  RouteTableConfig,
   RouteTableEntryConfig,
   SecurityGroupConfig,
   SecurityGroupRuleConfig,
@@ -37,6 +39,7 @@ import {
   VpcTemplatesConfig,
 } from '../../lib/network-config';
 import { NetworkValidatorFunctions } from './network-validator-functions';
+import { createLogger } from '@aws-accelerator/utils';
 import * as cdk from 'aws-cdk-lib';
 
 /**
@@ -235,6 +238,10 @@ export class VpcValidator {
     this.validateRouteTableNames(vpcItem, helpers, errors);
     // Validate route entries
     this.validateRouteTableEntries(values, vpcItem, helpers, errors);
+    // Validate route propagation for each route table
+    vpcItem.routeTables?.forEach(routeTable => {
+      this.validateRoutePropagation(routeTable, vpcItem, errors);
+    });
   }
 
   /**
@@ -426,6 +433,24 @@ export class VpcValidator {
   }
 
   /**
+   * Validate enableRoutePropagation requires virtualPrivateGateway to be defined on the VPC
+   * @param routeTableItem
+   * @param vpcItem
+   * @param errors
+   */
+  private validateRoutePropagation(
+    routeTableItem: RouteTableConfig,
+    vpcItem: VpcConfig | VpcTemplatesConfig,
+    errors: string[],
+  ) {
+    if (routeTableItem.enableRoutePropagation && !vpcItem.virtualPrivateGateway) {
+      errors.push(
+        `[Route table ${routeTableItem.name} for VPC ${vpcItem.name}]: enableRoutePropagation is set to true, but no virtualPrivateGateway is defined for the VPC`,
+      );
+    }
+  }
+
+  /**
    * Validate LGW routes are associated with a VPC with an Outpost and Local Gateway attached
    * @param routeTableEntryItem
    * @param routeTableName
@@ -492,6 +517,16 @@ export class VpcValidator {
     if (
       routeTableEntryItem.type === 'gatewayLoadBalancerEndpoint' &&
       !gwlbs?.find(item => item.endpoints.find(endpoint => endpoint.name === routeTableEntryItem.target))
+    ) {
+      errors.push(
+        `[Route table ${routeTableName} for VPC ${vpcItem.name}]: route entry ${routeTableEntryItem.name} target ${routeTableEntryItem.target} does not exist`,
+      );
+    }
+
+    // Throw error if gateway endpoint service isn't defined on the VPC
+    if (
+      routeTableEntryItem.type === 'gatewayEndpoint' &&
+      !vpcItem.gatewayEndpoints?.endpoints.find(endpoint => endpoint.service === routeTableEntryItem.target)
     ) {
       errors.push(
         `[Route table ${routeTableName} for VPC ${vpcItem.name}]: route entry ${routeTableEntryItem.name} target ${routeTableEntryItem.target} does not exist`,
@@ -707,6 +742,7 @@ export class VpcValidator {
         if (
           entry.type &&
           [
+            'gatewayEndpoint',
             'gatewayLoadBalancerEndpoint',
             'natGateway',
             'networkFirewall',
@@ -1304,6 +1340,76 @@ export class VpcValidator {
     if (helpers.hasDuplicates(azs)) {
       errors.push(
         `[VPC ${vpcItem.name}]: interfaceEndpoints target subnets reside in duplicate AZs. AZs must be unique. AZs configured: ${azs}`,
+      );
+    }
+
+    // Per-endpoint validations for the hostedZoneName / serviceName override pair
+    vpcItem.interfaceEndpoints?.endpoints.forEach(endpoint => {
+      this.validateInterfaceEndpointHostedZoneNameLength(vpcItem, endpoint, errors);
+      this.validateInterfaceEndpointOverridesSymmetry(vpcItem, endpoint);
+    });
+  }
+
+  /**
+   * Validate that hostedZoneName on an interface endpoint does not exceed the
+   * Route 53 CreateHostedZone API's Name length limit of 1024 characters.
+   *
+   * Pushes a deployment-blocking error into {@link errors} when the override is
+   * set and exceeds the limit. Omitted (undefined) values are not validated here
+   * — the schema's NonEmptyString constraint already enforces the lower bound.
+   *
+   * @param vpcItem
+   * @param endpoint
+   * @param errors
+   */
+  private validateInterfaceEndpointHostedZoneNameLength(
+    vpcItem: VpcConfig | VpcTemplatesConfig,
+    endpoint: InterfaceEndpointServiceConfig,
+    errors: string[],
+  ) {
+    if (endpoint.hostedZoneName !== undefined && endpoint.hostedZoneName.length > 1024) {
+      errors.push(
+        `[VPC ${vpcItem.name}] interface endpoint "${endpoint.service}": hostedZoneName length ` +
+          `${endpoint.hostedZoneName.length} exceeds the maximum of 1024 characters. This limit ` +
+          `matches the Name field in the Route 53 CreateHostedZone API.`,
+      );
+    }
+  }
+
+  /**
+   * Emit a warn-level advisory when exactly one of {@link InterfaceEndpointServiceConfig.serviceName}
+   * or {@link InterfaceEndpointServiceConfig.hostedZoneName} is set.
+   *
+   * The two overrides are typically set together for non-standard services (for
+   * example, `route53`) where both the endpoint service name and the PHZ name
+   * differ from LZA's default regional derivation. An asymmetric override is a
+   * legitimate escape hatch, so this check does not push into the errors
+   * accumulator — it only logs an advisory message via the network-config
+   * validator logger.
+   *
+   * @param vpcItem
+   * @param endpoint
+   */
+  private validateInterfaceEndpointOverridesSymmetry(
+    vpcItem: VpcConfig | VpcTemplatesConfig,
+    endpoint: InterfaceEndpointServiceConfig,
+  ) {
+    const logger = createLogger(['network-config-validator']);
+    const serviceNameSet = endpoint.serviceName !== undefined;
+    const hostedZoneNameSet = endpoint.hostedZoneName !== undefined;
+
+    if (serviceNameSet && !hostedZoneNameSet) {
+      logger.warn(
+        `[VPC ${vpcItem.name}] interface endpoint "${endpoint.service}": serviceName is set but hostedZoneName is not. ` +
+          `DNS resolution through this endpoint may fail for global or non-standard services. ` +
+          `Consider setting hostedZoneName to the PHZ name advertised by the service.`,
+      );
+    }
+    if (!serviceNameSet && hostedZoneNameSet) {
+      logger.warn(
+        `[VPC ${vpcItem.name}] interface endpoint "${endpoint.service}": hostedZoneName is set but serviceName is not. ` +
+          `The endpoint creation may fail if the default regional service name does not match the actual service. ` +
+          `Consider setting serviceName to the endpoint service name advertised by the service.`,
       );
     }
   }

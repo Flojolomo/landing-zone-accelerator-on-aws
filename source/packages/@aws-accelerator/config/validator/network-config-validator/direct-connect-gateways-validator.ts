@@ -66,9 +66,9 @@ export class DirectConnectGatewaysValidator {
         errors.push(`[Direct Connect Gateway ${dxgw.name}]: Amazon ASN and customer ASN match for ${vif.name}`);
       }
       // Catch error if ASN is not in the correct range
-      if (vif.customerAsn < 1 || vif.customerAsn > 2147483647) {
+      if (vif.customerAsn < 1 || vif.customerAsn > 4294967294) {
         errors.push(
-          `[Direct Connect Gateway ${dxgw.name}]: ASN ${vif.customerAsn} out of range 1-2147483647 for virtual interface ${vif.name}`,
+          `[Direct Connect Gateway ${dxgw.name}]: ASN ${vif.customerAsn} out of range 1-4294967294 for virtual interface ${vif.name}`,
         );
       }
       // Catch error if VIF VLAN is not in range
@@ -97,16 +97,29 @@ export class DirectConnectGatewaysValidator {
         errors.push(
           `[Direct Connect Gateway ${dxgw.name}]: cannot find matching transit gateway for TGW association ${tgwAssociation.name}`,
         );
+        continue;
       }
       // Catch error if ASNs match
-      if (tgw!.asn === dxgw.asn) {
-        errors.push(`[Direct Connect Gateway ${dxgw.name}]: DX Gateway ASN and TGW ASN match for ${tgw!.name}`);
+      if (tgw.asn === dxgw.asn) {
+        errors.push(`[Direct Connect Gateway ${dxgw.name}]: DX Gateway ASN and TGW ASN match for ${tgw.name}`);
       }
       // Catch error if TGW and DXGW account don't match and associations/propagations are configured
-      if (tgw!.account !== dxgw.account) {
+      if (tgw.account !== dxgw.account) {
         if (tgwAssociation.routeTableAssociations || tgwAssociation.routeTablePropagations) {
           errors.push(
             `[Direct Connect Gateway ${dxgw.name}]: DX Gateway association proposals cannot have TGW route table associations or propagations defined`,
+          );
+        }
+      }
+
+      // Validate route table names exist on the TGW
+      for (const routeTable of new Set([
+        ...(tgwAssociation.routeTableAssociations ?? []),
+        ...(tgwAssociation.routeTablePropagations ?? []),
+      ])) {
+        if (!tgw.routeTables.find(item => item.name === routeTable)) {
+          errors.push(
+            `[Direct Connect Gateway ${dxgw.name}]: route table "${routeTable}" does not exist on Transit Gateway ${tgw.name}`,
           );
         }
       }

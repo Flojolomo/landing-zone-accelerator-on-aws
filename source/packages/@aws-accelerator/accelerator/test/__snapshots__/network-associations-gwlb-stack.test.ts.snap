@@ -238,7 +238,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "Cross account EC2 route OnEvent handler",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -379,7 +379,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-NetworkAssociationsGwlbStack-555555555555-us-east-1/CrossAccountRouteFramework/CrossAccountRouteProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "CrossAccountRouteFrameworkCrossAccountRouteFunctionAFDC4801",
@@ -519,7 +519,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -612,7 +612,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -705,7 +705,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -816,7 +816,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -1017,6 +1017,12 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
             "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionsubnetNetworkInspectionAidC96584B6F00A464EAD1953AFF4B05118Parameter",
           },
         ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-Endpoint-A",
+          },
+        ],
         "VpcEndpointType": "GatewayLoadBalancer",
         "VpcId": {
           "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionidC96584B6F00A464EAD1953AFF4B05118Parameter",
@@ -1069,6 +1075,12 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "SubnetIds": [
           {
             "Ref": "SsmParameterValueacceleratornetworkvpcNetworkInspectionsubnetNetworkInspectionBidC96584B6F00A464EAD1953AFF4B05118Parameter",
+          },
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Inspection-Endpoint-B",
           },
         ],
         "VpcEndpointType": "GatewayLoadBalancer",
@@ -1160,7 +1172,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "Firewall configuration replacement custom resource",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -1280,7 +1292,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-NetworkAssociationsGwlbStack-555555555555-us-east-1/NetworkInspectionacceleratorFirewallConfigReplacements/Resource/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "NetworkInspectionacceleratorFirewallConfigReplacementsFunctionA38B05D1",
@@ -1794,7 +1806,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "Firewall configuration replacement custom resource",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -1875,7 +1887,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-NetworkAssociationsGwlbStack-555555555555-us-east-1/NetworkInspectiontestAsgConfigReplacements/Resource/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "NetworkInspectiontestAsgConfigReplacementsFunction8E5695D3",
@@ -2069,7 +2081,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -2196,7 +2208,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-NetworkAssociationsGwlbStack-555555555555-us-east-1/NetworkInspectiontestAsgFirewallAsg/Resource/AutoScalingServiceLinkedRole/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "NetworkInspectiontestAsgFirewallAsgAutoScalingServiceLinkedRoleCreateServiceLinkedRoleFunctionBC1FC120",
@@ -2554,6 +2566,12 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
             "Ref": "SsmParameterValueacceleratornetworkvpcNetworkSecondarysubnetNetworkSecondaryAidC96584B6F00A464EAD1953AFF4B05118Parameter",
           },
         ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Secondary-Secondary-Endpoint-A",
+          },
+        ],
         "VpcEndpointType": "GatewayLoadBalancer",
         "VpcId": {
           "Ref": "SsmParameterValueacceleratornetworkvpcNetworkSecondaryidC96584B6F00A464EAD1953AFF4B05118Parameter",
@@ -2579,6 +2597,12 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
             "Ref": "SsmParameterValueacceleratornetworkvpcNetworkSecondarysubnetNetworkSecondaryBidC96584B6F00A464EAD1953AFF4B05118Parameter",
           },
         ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Secondary-Secondary-Endpoint-B",
+          },
+        ],
         "VpcEndpointType": "GatewayLoadBalancer",
         "VpcId": {
           "Ref": "SsmParameterValueacceleratornetworkvpcNetworkSecondaryidC96584B6F00A464EAD1953AFF4B05118Parameter",
@@ -2602,6 +2626,12 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "SubnetIds": [
           {
             "Ref": "SsmParameterValueacceleratornetworkvpcNetworkSecondarysubnetNetworkSecondaryAidC96584B6F00A464EAD1953AFF4B05118Parameter",
+          },
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Secondary-Shared-Secondary-Endpoint-A",
           },
         ],
         "VpcEndpointType": "GatewayLoadBalancer",
@@ -2651,6 +2681,12 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
         "SubnetIds": [
           {
             "Ref": "SsmParameterValueacceleratornetworkvpcNetworkSecondarysubnetNetworkSecondaryDidC96584B6F00A464EAD1953AFF4B05118Parameter",
+          },
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Network-Secondary-Shared-Secondary-Endpoint-D",
           },
         ],
         "VpcEndpointType": "GatewayLoadBalancer",
@@ -3037,7 +3073,7 @@ exports[`NetworkAssociationsGwlbStack > Construct(NetworkAssociationsGwlbStack):
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-NetworkAssociationsGwlbStack-555555555555-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },

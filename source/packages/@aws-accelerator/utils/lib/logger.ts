@@ -13,18 +13,32 @@
 
 import * as winston from 'winston';
 
+const logFormat = winston.format.printf(({ message, timestamp, level, mainLabel, childLabel }) => {
+  return `${timestamp} | ${level} | ${childLabel || mainLabel} | ${message}`;
+});
+
+// eslint-disable-next-line no-control-regex
+const ANSI_REGEX = /\x1b\[[0-9;]*m/g;
+const stripAnsi = winston.format(info => {
+  info.message = (info.message as string).replace(ANSI_REGEX, '');
+  return info;
+});
+
 const Logger = winston.createLogger({
   defaultMeta: { mainLabel: 'accelerator' },
-  level: process.env['LOG_LEVEL'] ?? 'info',
-  format: winston.format.combine(
-    winston.format.colorize(),
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
-    winston.format.printf(({ message, timestamp, level, mainLabel, childLabel }) => {
-      return `${timestamp} | ${level} | ${childLabel || mainLabel} | ${message}`;
+  level: 'debug',
+  format: winston.format.combine(winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' })),
+  transports: [
+    new winston.transports.Console({
+      level: process.env['LOG_LEVEL'] ?? 'info',
+      format: winston.format.combine(winston.format.colorize(), logFormat),
     }),
-    winston.format.align(),
-  ),
-  transports: [new winston.transports.Console()],
+    new winston.transports.File({
+      filename: 'debug.log',
+      level: 'debug',
+      format: winston.format.combine(stripAnsi(), logFormat),
+    }),
+  ],
 });
 
 winston.add(Logger);
@@ -33,3 +47,30 @@ export const createLogger = (logInfo: string[]) => {
   const logInfoString = logInfo.join(' | ');
   return Logger.child({ childLabel: logInfoString });
 };
+
+/**
+ * Drains and closes all File transports on the shared Logger.
+ *
+ * Winston's File transport buffers writes asynchronously. When a process
+ * calls `process.exit()` while writes are still pending, those writes are
+ * lost. Call this before exiting to guarantee the final log lines reach disk.
+ *
+ * Safe to call multiple times. Resolves even if no File transports exist.
+ *
+ * Note: this ends the underlying stream, so the Logger cannot be used for
+ * File writes after calling this. Intended for use on exit paths only.
+ */
+export async function flushFileTransports(): Promise<void> {
+  const fileTransports = Logger.transports.filter(
+    (t): t is winston.transports.FileTransportInstance => t instanceof winston.transports.File,
+  );
+  await Promise.all(
+    fileTransports.map(
+      t =>
+        new Promise<void>(resolve => {
+          t.once('finish', () => resolve());
+          t.end();
+        }),
+    ),
+  );
+}

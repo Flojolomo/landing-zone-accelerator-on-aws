@@ -26,46 +26,138 @@
  * - Comprehensive error handling for organization operations
  */
 
-import path from 'path';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   Account,
   AccountJoinedMethod,
+  AccountNotRegisteredException,
+  AccountState,
   AccountStatus,
   AWSOrganizationsNotInUseException,
+  DeregisterDelegatedAdministratorCommand,
   DescribeOrganizationCommand,
+  ListDelegatedAdministratorsCommand,
+  Organization,
   OrganizationsClient,
   paginateListAccounts,
 } from '@aws-sdk/client-organizations';
-import { createLogger } from './logger';
-import { executeApi } from './utility';
+import path from 'node:path';
 import { queryDynamoDBTable } from './dynamodb-table-functions';
 import { IModuleOrganizationsDataSource } from './interfaces';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { MODULE_EXCEPTIONS } from './types';
+import { createLogger } from './logger';
+import { MODULE_EXCEPTIONS, SdkClientPropsType } from './types';
+import { executeApi, setRetryStrategy } from './utility';
 
 const logger = createLogger([path.parse(path.basename(__filename)).name]);
 
 /**
- * Retrieves all AWS Organizations accounts using paginated API calls
- * @param client - AWS Organizations client instance
- * @param logPrefix - Prefix for logging messages
- * @returns Promise resolving to array of organization accounts
+ * Returns true when an account's State (or legacy Status) is ACTIVE.
+ * Accounts without either lifecycle field are also treated as active for
+ * compatibility with legacy cached records that did not persist lifecycle state.
+ * Non-active lifecycle states cannot accept
+ * cross-account `AssumeRole`, so downstream modules must skip them.
  */
-export async function getOrganizationAccounts(client: OrganizationsClient, logPrefix: string): Promise<Account[]> {
-  const accounts: Account[] = [];
+function isAccountActive(account: Account): boolean {
+  const accountState = account.State ?? account.Status;
+  return accountState === undefined || accountState === AccountState.ACTIVE;
+}
+
+/**
+ * Retrieves all AWS Organizations accounts using paginated API calls.
+ *
+ * Only ACTIVE accounts are returned; suspended and pending-closure accounts
+ * are filtered out so that downstream modules don't attempt cross-account
+ * `AssumeRole` calls into accounts that cannot accept them.
+ *
+ * @param logPrefix - Prefix for logging messages
+ * @param client - Optional AWS Organizations client instance
+ * @param clientProps - Optional client configuration properties
+ * @returns Promise resolving to array of ACTIVE organization accounts
+ */
+export async function getOrganizationAccounts(
+  logPrefix: string,
+  client?: OrganizationsClient,
+  clientProps?: SdkClientPropsType,
+): Promise<Account[]> {
+  const organizationClient: OrganizationsClient =
+    client ??
+    new OrganizationsClient({
+      region: clientProps?.region,
+      customUserAgent: clientProps?.customUserAgent,
+      retryStrategy: setRetryStrategy(),
+      credentials: clientProps?.credentials,
+    });
+
+  const allAccounts: Account[] = [];
   logger.info(`Getting all AWS Organizations accounts`, logPrefix);
+
   const command = 'paginateListAccounts';
   const parameter = { MaxResults: 20 };
   logger.commandExecution(command, parameter, logPrefix);
-  const paginator = paginateListAccounts({ client }, parameter);
+  const paginator = paginateListAccounts({ client: organizationClient }, parameter);
   for await (const page of paginator) {
     for (const account of page.Accounts ?? []) {
-      accounts.push(account);
+      allAccounts.push(account);
     }
   }
   logger.commandSuccess(command, parameter, logPrefix);
 
-  return accounts;
+  const activeAccounts = allAccounts.filter(isAccountActive);
+  const skipped = allAccounts.filter(account => !isAccountActive(account));
+  if (skipped.length > 0) {
+    const summary = skipped
+      .map(account => `${account.Id ?? 'unknown'} (${account.State ?? account.Status ?? 'unknown'})`)
+      .join(', ');
+    logger.warn(
+      `Skipping ${skipped.length} non-ACTIVE AWS Organizations account(s) from module execution: ${summary}`,
+      logPrefix,
+    );
+  }
+
+  return activeAccounts;
+}
+
+/**
+ * Retrieves AWS Organizations details using the DescribeOrganization API
+ * @param logPrefix - Prefix for logging messages
+ * @param client - Optional AWS Organizations client instance
+ * @param clientProps - Optional client configuration properties
+ * @returns Promise resolving to Organization details or undefined if not configured
+ */
+export async function getOrganizationDetails(
+  logPrefix: string,
+  client?: OrganizationsClient,
+  clientProps?: SdkClientPropsType,
+): Promise<Organization | undefined> {
+  const organizationClient: OrganizationsClient =
+    client ??
+    new OrganizationsClient({
+      region: clientProps?.region,
+      customUserAgent: clientProps?.customUserAgent,
+      retryStrategy: setRetryStrategy(),
+      credentials: clientProps?.credentials,
+    });
+
+  const response = await executeApi(
+    'DescribeOrganizationCommand',
+    {},
+    () => organizationClient.send(new DescribeOrganizationCommand({})),
+    logger,
+    logPrefix,
+    [AWSOrganizationsNotInUseException],
+  );
+
+  if (!response) {
+    // Expected exception occurred (AWSOrganizationsNotInUseException)
+    logger.warn(`AWS Organizations is not configured`, logPrefix);
+    return undefined;
+  }
+
+  if (!response.Organization) {
+    throw new Error(`AWS Organization couldn't fetch organization details`);
+  }
+
+  return response.Organization;
 }
 
 /**
@@ -80,23 +172,21 @@ export async function isManagementAccount(
   accountId: string,
   logPrefix: string,
 ): Promise<boolean> {
-  try {
-    const response = await executeApi(
-      'DescribeOrganizationCommand',
-      {},
-      () => client.send(new DescribeOrganizationCommand({})),
-      logger,
-      logPrefix,
-      [AWSOrganizationsNotInUseException],
-    );
+  const response = await executeApi(
+    'DescribeOrganizationCommand',
+    {},
+    () => client.send(new DescribeOrganizationCommand({})),
+    logger,
+    logPrefix,
+    [AWSOrganizationsNotInUseException],
+  );
 
-    return response.Organization?.MasterAccountId === accountId;
-  } catch (error: unknown) {
-    if (error instanceof AWSOrganizationsNotInUseException) {
-      return false;
-    }
-    throw error;
+  if (!response) {
+    // Expected exception occurred (AWSOrganizationsNotInUseException)
+    return false;
   }
+
+  return response.Organization?.MasterAccountId === accountId;
 }
 
 /**
@@ -162,14 +252,36 @@ function buildAccountFromItem(item: { [key: string]: unknown }): Account {
     throw new Error(message);
   }
 
+  let orgInfo: { [key: string]: unknown } = {};
+  if (item['orgInfo']) {
+    try {
+      orgInfo = JSON.parse(item['orgInfo'] as string);
+    } catch (error: unknown) {
+      const message = `${MODULE_EXCEPTIONS.INVALID_INPUT}: Invalid JSON in orgInfo field for account ${item['acceleratorKey']}: ${error}`;
+      logger.error(message);
+      throw new Error(message);
+    }
+  }
+
+  const orgsApiResponse =
+    typeof orgInfo['orgsApiResponse'] === 'object' && orgInfo['orgsApiResponse'] !== null
+      ? (orgInfo['orgsApiResponse'] as { [key: string]: unknown })
+      : {};
+
   if (dataBag['name']) {
     account.Name = dataBag['name'] as string;
   }
   if (dataBag['arn']) {
     account.Arn = dataBag['arn'] as string;
   }
-  if (dataBag['status']) {
-    account.Status = dataBag['status'] as AccountStatus;
+  const state = orgsApiResponse['State'];
+  if (state) {
+    account.State = state as AccountState;
+  } else {
+    const status = orgInfo['status'] ?? orgsApiResponse['Status'] ?? dataBag['status'];
+    if (status) {
+      account.Status = status as AccountStatus;
+    }
   }
   if (dataBag['joinedMethod']) {
     account.JoinedMethod = dataBag['joinedMethod'] as AccountJoinedMethod;
@@ -197,21 +309,23 @@ export async function getOrganizationAccountsFromSourceTable(options: {
 }): Promise<Account[]> {
   const accounts: Account[] = [];
 
-  const tableData = await queryDynamoDBTable({
+  const result = await queryDynamoDBTable({
     client: options.client,
     tableName: options.organizationsDataSource.tableName,
     logPrefix: options.logPrefix,
     filters: options.organizationsDataSource.filters,
     filterOperator: options.organizationsDataSource.filterOperator,
+    pagination: { enabled: true },
   });
 
-  if (!tableData) {
+  if (!result.items) {
     const message = `${MODULE_EXCEPTIONS.INVALID_INPUT}: No organization accounts found in source table ${options.organizationsDataSource.tableName} (${options.organizationsDataSource.filters?.length || 0} filters applied)`;
     logger.error(message, options.logPrefix);
     throw new Error(message);
   }
 
-  for (const item of tableData) {
+  const skipped: Account[] = [];
+  for (const item of result.items) {
     if (!isValidAccountType(item['dataType'] as string)) {
       continue;
     }
@@ -220,9 +334,123 @@ export async function getOrganizationAccountsFromSourceTable(options: {
     logger.info(`Found account ${item['acceleratorKey']} in source table`, options.logPrefix);
 
     const account = buildAccountFromItem(item);
-    accounts.push(account);
+    if (isAccountActive(account)) {
+      accounts.push(account);
+    } else {
+      skipped.push(account);
+    }
+  }
+
+  if (skipped.length > 0) {
+    const summary = skipped
+      .map(account => `${account.Id ?? 'unknown'} (${account.State ?? account.Status ?? 'unknown'})`)
+      .join(', ');
+    logger.warn(
+      `Skipping ${skipped.length} non-ACTIVE AWS Organizations account(s) from source table: ${summary}`,
+      options.logPrefix,
+    );
   }
 
   logger.info(`Retrieved ${accounts.length} accounts from source table`, options.logPrefix);
   return accounts;
+}
+
+/**
+ * Retrieves the delegated administrator account ID for a specific AWS service
+ * @param client - AWS Organizations client instance
+ * @param servicePrincipal - Service principal (e.g., 'macie.amazonaws.com', 'securityhub.amazonaws.com')
+ * @param logPrefix - Prefix for logging messages
+ * @returns Promise resolving to delegated admin account ID or undefined if none set
+ * @throws Error if multiple delegated administrators are found for the service
+ */
+export async function getDelegatedAdministratorAccountId(
+  client: OrganizationsClient,
+  servicePrincipal: string,
+  logPrefix: string,
+): Promise<string | undefined> {
+  const commandName = 'ListDelegatedAdministratorsCommand';
+  const parameters = { ServicePrincipal: servicePrincipal };
+
+  const response = await executeApi(
+    commandName,
+    parameters,
+    () => client.send(new ListDelegatedAdministratorsCommand(parameters)),
+    logger,
+    logPrefix,
+  );
+
+  const delegatedAdmins = response.DelegatedAdministrators || [];
+
+  if (delegatedAdmins.length === 0) {
+    logger.info(`No delegated administrator found for service ${servicePrincipal}`, logPrefix);
+    return undefined;
+  }
+
+  if (delegatedAdmins.length > 1) {
+    const accountIds = delegatedAdmins.map(admin => admin.Id).join(', ');
+    const message = `${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: Multiple delegated administrators found for service ${servicePrincipal}: ${accountIds}`;
+    logger.error(message, logPrefix);
+    throw new Error(message);
+  }
+
+  const adminAccountId = delegatedAdmins[0].Id;
+  logger.info(`Found delegated administrator ${adminAccountId} for service ${servicePrincipal}`, logPrefix);
+  return adminAccountId;
+}
+
+/**
+ * Deregisters a delegated administrator account for a specific AWS service
+ * @param client - AWS Organizations client instance
+ * @param accountId - Account ID to deregister as delegated administrator
+ * @param servicePrincipal - Service principal (e.g., 'macie.amazonaws.com', 'securityhub.amazonaws.com')
+ * @param dryRun - Whether to perform dry run without making changes
+ * @param logPrefix - Prefix for logging messages
+ * @returns Promise that resolves when deregistration is complete
+ */
+export async function deregisterDelegatedAdministrator(
+  client: OrganizationsClient,
+  accountId: string,
+  servicePrincipal: string,
+  dryRun: boolean,
+  logPrefix: string,
+): Promise<void> {
+  const commandName = 'DeregisterDelegatedAdministratorCommand';
+  const parameters = {
+    AccountId: accountId,
+    ServicePrincipal: servicePrincipal,
+  };
+
+  if (dryRun) {
+    logger.dryRun(commandName, parameters, logPrefix);
+    return;
+  }
+
+  logger.info(`Deregistering delegated administrator ${accountId} for service ${servicePrincipal}`, logPrefix);
+
+  try {
+    await executeApi(
+      commandName,
+      parameters,
+      () => client.send(new DeregisterDelegatedAdministratorCommand(parameters)),
+      logger,
+      logPrefix,
+      [AccountNotRegisteredException],
+    );
+
+    logger.info(
+      `Successfully deregistered delegated administrator ${accountId} for service ${servicePrincipal}`,
+      logPrefix,
+    );
+  } catch (error: unknown) {
+    // Handle AccountNotRegisteredException as expected behavior - account was already not a delegated admin
+    if (error instanceof AccountNotRegisteredException) {
+      logger.info(
+        `Account ${accountId} is not a registered delegated administrator for service ${servicePrincipal} - no action needed`,
+        logPrefix,
+      );
+      return;
+    }
+    // Re-throw any other unexpected errors
+    throw error;
+  }
 }

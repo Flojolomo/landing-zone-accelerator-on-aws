@@ -267,7 +267,10 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
@@ -277,7 +280,11 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::Join": [
@@ -600,7 +607,10 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
@@ -610,7 +620,11 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::Join": [
@@ -1335,7 +1349,11 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::Join": [
@@ -1656,7 +1674,10 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
@@ -1666,7 +1687,11 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::Join": [
@@ -1998,7 +2023,11 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::Join": [
@@ -2348,7 +2377,10 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
@@ -2358,7 +2390,11 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::Join": [
@@ -2876,6 +2912,15 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
               "Resource": "*",
             },
             {
+              "Action": "kms:DescribeKey",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "principal1.amazonaws.com",
+              },
+              "Resource": "*",
+              "Sid": "Allow principal1 to describe the encryption key",
+            },
+            {
               "Action": [
                 "kms:Encrypt",
                 "kms:ReEncrypt*",
@@ -2887,6 +2932,15 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
                 "Service": "principal2.amazonaws.com",
               },
               "Resource": "*",
+            },
+            {
+              "Action": "kms:DescribeKey",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "principal2.amazonaws.com",
+              },
+              "Resource": "*",
+              "Sid": "Allow principal2 to describe the encryption key",
             },
             {
               "Action": [
@@ -2901,6 +2955,15 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
                 "Service": "principal3.amazonaws.com",
               },
               "Resource": "*",
+            },
+            {
+              "Action": "kms:DescribeKey",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "principal3.amazonaws.com",
+              },
+              "Resource": "*",
+              "Sid": "Allow principal3 to describe the encryption key",
             },
           ],
           "Version": "2012-10-17",
@@ -3027,7 +3090,7 @@ exports[`Bucket > Construct(Bucket):  Snapshot Test 1`] = `
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",

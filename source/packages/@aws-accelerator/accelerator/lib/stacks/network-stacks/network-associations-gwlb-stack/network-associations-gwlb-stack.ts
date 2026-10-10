@@ -805,6 +805,16 @@ export class NetworkAssociationsGwlbStack extends NetworkStack {
         },
       ],
       loadBalancerArn,
+      ...(gwlbItem.tcpIdleTimeout
+        ? {
+            listenerAttributes: [
+              {
+                key: 'tcp.idle_timeout.seconds',
+                value: gwlbItem.tcpIdleTimeout.toString(),
+              },
+            ],
+          }
+        : {}),
     });
   }
 
@@ -908,6 +918,7 @@ export class NetworkAssociationsGwlbStack extends NetworkStack {
       vpcId,
       subnets: [subnet],
       partition: partition,
+      name: `${endpointItem.vpc}-${endpointItem.name}`,
     });
   }
 

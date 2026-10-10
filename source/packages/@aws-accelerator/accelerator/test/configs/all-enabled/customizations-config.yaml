@@ -756,30 +756,6 @@ firewalls:
             subnetId: Network-Inspection-A
         securityGroups: []
       vpc: Network-Inspection
-    - name: cross-account-firewall
-      launchTemplate:
-        name: firewall-lt
-        blockDeviceMappings:
-          - deviceName: /dev/xvda
-            ebs:
-              encrypted: true
-              volumeSize: 20
-          - deviceName: /dev/xvdb
-            ebs:
-              encrypted: true
-              volumeSize: 10
-        iamInstanceProfile: EC2-Default-SSM-AD-Role
-        imageId: ami-0e1c5d8c23330dee3
-        instanceType: t3.large
-        networkInterfaces:
-          - deviceIndex: 0
-            description: Primary interface
-            associateElasticIp: true
-            groups:
-              - SharedServices-Main-Rsyslog-sg
-            subnetId: SharedServices-App-A
-        securityGroups: []
-      vpc: SharedServices-Main
     - name: firewall-with-shared-subnet
       launchTemplate:
         name: shared-subnet-firewall-lt
@@ -799,6 +775,8 @@ firewalls:
           - deviceIndex: 0
             description: Primary interface
             associateElasticIp: true
+            deleteOnTermination: true
+            sourceDestCheck: true
             groups:
               - SharedServices-Main-Rsyslog-sg
             subnetId: SharedServices-App-C
@@ -848,34 +826,35 @@ firewalls:
               - Data
         securityGroups: []
       vpc: Network-Inspection
-  managerInstances:
-    - name: accelerator-manager
-      launchTemplate:
-        name: manager-lt
-        blockDeviceMappings:
-          - deviceName: /dev/xvda
-            ebs:
-              encrypted: true
-              volumeSize: 20
-          - deviceName: /dev/xvdb
-            ebs:
-              encrypted: true
-              volumeSize: 10
-        imageId: ${ACCEL_LOOKUP::ImageId:/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2}
-        instanceType: t3.large
-        networkInterfaces:
-          - deviceIndex: 0
-            description: Primary interface
-            groups:
-              - Data
-            subnetId: Network-Inspection-A
-          - deviceIndex: 1
-            description: Secondary
-            groups:
-              - Data
-            subnetId: Network-Inspection-A
-        securityGroups: []
-      vpc: Network-Inspection
+      # Removed from testing
+  managerInstances: []
+    # - name: accelerator-manager
+    #   launchTemplate:
+    #     name: manager-lt
+    #     blockDeviceMappings:
+    #       - deviceName: /dev/xvda
+    #         ebs:
+    #           encrypted: true
+    #           volumeSize: 20
+    #       - deviceName: /dev/xvdb
+    #         ebs:
+    #           encrypted: true
+    #           volumeSize: 10
+    #     imageId: ${ACCEL_LOOKUP::ImageId:/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2}
+    #     instanceType: t3.large
+    #     networkInterfaces:
+    #       - deviceIndex: 0
+    #         description: Primary interface
+    #         groups:
+    #           - Data
+    #         subnetId: Network-Inspection-A
+    #       - deviceIndex: 1
+    #         description: Secondary
+    #         groups:
+    #           - Data
+    #         subnetId: Network-Inspection-A
+    #     securityGroups: []
+    #   vpc: Network-Inspection
   targetGroups:
     - name: instance-target
       port: 6081
@@ -883,14 +862,6 @@ firewalls:
       type: instance
       targets:
         - accelerator-firewall
-      attributes:
-        targetFailover: rebalance
-    - name: shared-services-target
-      port: 6081
-      protocol: GENEVE
-      type: instance
-      targets:
-        - cross-account-firewall
       attributes:
         targetFailover: rebalance
     - name: asg-target

@@ -1,0 +1,16 @@
+{
+  "name": "disable-flag",
+  "description": "No transitGateways configured so wrapper should skip before module execution",
+  "order": 9,
+  "moduleConfig": {
+    "homeRegion": "${ENV:TGW_INTEG_HOME_REGION}",
+    "enabledRegions": ["${ENV:TGW_INTEG_HOME_REGION}"],
+    "transitGateways": []
+  },
+  "expectedAssertions": {
+    "moduleResponseStatus": "skipped",
+    "moduleResponseSkipped": true,
+    "stateTableEntry": {}
+  },
+  "skipCleanup": true
+}

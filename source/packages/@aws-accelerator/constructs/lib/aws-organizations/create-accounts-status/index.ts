@@ -18,7 +18,7 @@
  */
 
 import { throttlingBackOff } from '@aws-accelerator/utils/lib/throttle';
-import { CreateAccountResponse } from '@aws-sdk/client-organizations';
+import { Account, CreateAccountResponse } from '@aws-sdk/client-organizations';
 import { getGlobalRegion, setRetryStrategy } from '@aws-accelerator/utils/lib/common-functions';
 import { CloudFormationCustomResourceEvent, Context } from '@aws-accelerator/utils/lib/common-types';
 import {
@@ -52,6 +52,39 @@ interface AccountConfig {
 type AccountConfigs = Array<AccountConfig>;
 let organizationsClient: OrganizationsClient;
 let documentClient: DynamoDBDocumentClient;
+
+/**
+ * Builds the account information cached in the accelerator configuration table.
+ *
+ * @param email Account email used as the configuration key
+ * @param accountId AWS account ID
+ * @param orgsApiResponse DescribeAccount response
+ * @returns Backward-compatible account cache object with normalized lifecycle state
+ */
+export function buildAccountOrgInfo(email: string, accountId: string, orgsApiResponse?: Account) {
+  return {
+    email,
+    accountId,
+    status: orgsApiResponse?.State ?? orgsApiResponse?.Status,
+    orgsApiResponse,
+  };
+}
+
+/**
+ * Determines whether an AWS Organizations account has reached the ACTIVE lifecycle state.
+ *
+ * Resolves the lifecycle value with `State ?? Status` so it stays correct across the AWS
+ * Organizations Status->State field migration: it prefers the current `State` field when the
+ * API returns it, and falls back to the legacy `Status` field in partitions/SDKs that only
+ * populate `Status`. Using the same resolution as {@link buildAccountOrgInfo} keeps the
+ * completion gate and the persisted account cache consistent.
+ *
+ * @param account DescribeAccount response Account object
+ * @returns true only when the resolved lifecycle state is ACTIVE
+ */
+export function isAccountLifecycleActive(account?: Account): boolean {
+  return (account?.State ?? account?.Status) === 'ACTIVE';
+}
 
 export async function handler(
   event: CloudFormationCustomResourceEvent,
@@ -121,6 +154,22 @@ export async function handler(
             };
           }
         case 'SUCCEEDED':
+          if (!(await isNewAccountActive(createAccountResponse.CreateAccountStatus!.AccountId!))) {
+            console.log(
+              `Account ${createAccountResponse.CreateAccountStatus!.AccountId} created but not yet ACTIVE; waiting for activation`,
+            );
+            // Persist the create request id (as the IN_PROGRESS branch does) before deferring, so the
+            // next poll resumes via the status-poll branch instead of re-entering the create branch and
+            // re-running account creation (which would fail EMAIL_ALREADY_EXISTS and orphan the account).
+            singleAccountToAdd.createRequestId = createAccountResponse.CreateAccountStatus!.Id;
+            const updatePendingActivationResponse = await updateAccountConfig(singleAccountToAdd);
+            if (!updatePendingActivationResponse) {
+              throw new Error('Unable to update DynamoDB account record with request id');
+            }
+            return {
+              IsComplete: false,
+            };
+          }
           await handleSucceededAccountCreation(
             createAccountResponse.CreateAccountStatus.AccountId!,
             createAccountResponse.CreateAccountStatus.GovCloudAccountId,
@@ -155,6 +204,14 @@ export async function handler(
             IsComplete: false,
           };
         case 'SUCCEEDED':
+          if (!(await isNewAccountActive(createAccountStatusResponse.CreateAccountStatus!.AccountId!))) {
+            console.log(
+              `Account ${createAccountStatusResponse.CreateAccountStatus!.AccountId} created but not yet ACTIVE; waiting for activation`,
+            );
+            return {
+              IsComplete: false,
+            };
+          }
           console.log(`Account with id ${createAccountStatusResponse.CreateAccountStatus?.AccountId} is complete`);
           await handleSucceededAccountCreation(
             createAccountStatusResponse.CreateAccountStatus.AccountId!,
@@ -259,6 +316,28 @@ async function getAccountCreationStatus(requestId: string): Promise<DescribeCrea
   return await throttlingBackOff(() =>
     organizationsClient.send(new DescribeCreateAccountStatusCommand({ CreateAccountRequestId: requestId })),
   );
+}
+
+/**
+ * Checks whether a newly created account has finished activating.
+ *
+ * AWS Organizations reports `CreateAccountStatus.State === 'SUCCEEDED'` as soon as the account
+ * exists, but in some partitions (notably isolated/air-gapped regions) the account's own
+ * lifecycle remains non-ACTIVE (e.g. PENDING_ACTIVATION) for several minutes afterward.
+ * Completing creation before then persists that transient value into the config table and later
+ * fails validate-environment in the Prepare stage, so we gate completion on the account actually
+ * reaching ACTIVE.
+ *
+ * @param accountId AWS account ID of the newly created account
+ * @returns true when the account lifecycle state is ACTIVE
+ */
+async function isNewAccountActive(accountId: string): Promise<boolean> {
+  const describeAccountResponse = await throttlingBackOff(() =>
+    organizationsClient.send(new DescribeAccountCommand({ AccountId: accountId })),
+  );
+  const account = describeAccountResponse.Account;
+  console.log(`Account ${accountId} lifecycle state: ${account?.State ?? account?.Status}`);
+  return isAccountLifecycleActive(account);
 }
 
 async function updateAccountConfig(accountConfig: AccountConfig): Promise<boolean> {
@@ -391,12 +470,7 @@ async function updateConfigTableWithAccountInfo(accountId: string, email: string
       UpdateExpression: 'SET awsKey = :awsKey, orgInfo = :orgInfo',
       ExpressionAttributeValues: {
         ':awsKey': accountId,
-        ':orgInfo': JSON.stringify({
-          email,
-          accountId,
-          status: orgsApiResponse?.Status,
-          orgsApiResponse,
-        }),
+        ':orgInfo': JSON.stringify(buildAccountOrgInfo(email, accountId, orgsApiResponse)),
       },
     };
 

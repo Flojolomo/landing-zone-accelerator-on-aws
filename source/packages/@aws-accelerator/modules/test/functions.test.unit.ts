@@ -21,17 +21,19 @@ import {
   getOrganizationDetails,
   getRunnerTargetRegions,
   isModuleExecutionSkippedByEnvironment,
+  resolveModuleAccountAccessRole,
   scriptUsage,
   validateAndGetRunnerParameters,
 } from '../lib/functions';
 import { version } from '../../../../package.json';
 import {
+  AccountState,
   AWSOrganizationsNotInUseException,
   DescribeOrganizationCommand,
   OrganizationsClient,
   paginateListAccounts,
 } from '@aws-sdk/client-organizations';
-import { ParameterNotFound, SSMClient } from '@aws-sdk/client-ssm';
+import { GetParameterCommand, ParameterNotFound, SSMClient } from '@aws-sdk/client-ssm';
 import {
   AccountsConfig,
   CustomizationsConfig,
@@ -77,11 +79,13 @@ vi.mock('@aws-sdk/client-organizations', async () => ({
 }));
 
 vi.mock('@aws-sdk/client-ssm', () => ({
-  SSMClient: vi.fn().mockImplementation(function() { return {
-    send: vi.fn().mockResolvedValue({
-      Parameter: MOCK_CONSTANTS.centralLogBucketCmkSsmParameter,
-    }),
-  }; }),
+  SSMClient: vi.fn().mockImplementation(function () {
+    return {
+      send: vi.fn().mockResolvedValue({
+        Parameter: MOCK_CONSTANTS.centralLogBucketCmkSsmParameter,
+      }),
+    };
+  }),
   GetParameterCommand: vi.fn(),
   ParameterNotFound: class ParameterNotFound extends Error {
     constructor() {
@@ -477,6 +481,43 @@ describe('functions', () => {
 
       expect(result).toEqual([]);
     });
+
+    test('should exclude accounts whose State is not ACTIVE', async () => {
+      // Setup
+      const suspendedAccount = {
+        Id: MOCK_CONSTANTS.testAccounts.suspended.id,
+        Arn: `arn:aws:organizations::111111111111:account/o-exampleorgid/${MOCK_CONSTANTS.testAccounts.suspended.id}`,
+        Email: MOCK_CONSTANTS.testAccounts.suspended.email,
+        Name: MOCK_CONSTANTS.testAccounts.suspended.name,
+        State: AccountState.SUSPENDED,
+        JoinedMethod: 'INVITED',
+        JoinedTimestamp: new Date('2024-01-01'),
+      };
+      const pendingClosureAccount = {
+        Id: '888888888888',
+        Arn: 'arn:aws:organizations::111111111111:account/o-exampleorgid/888888888888',
+        Email: 'pending-closure@example.com',
+        Name: 'PendingClosureAccount',
+        State: AccountState.PENDING_CLOSURE,
+        JoinedMethod: 'INVITED',
+        JoinedTimestamp: new Date('2024-02-01'),
+      };
+      const mockPaginator = [
+        { Accounts: [...MOCK_CONSTANTS.organizationAccounts, suspendedAccount, pendingClosureAccount] },
+      ];
+      (paginateListAccounts as vi.Mock).mockImplementation(() => mockPaginator);
+
+      // Execute
+      const result = await getOrganizationAccounts(
+        MOCK_CONSTANTS.globalRegion,
+        MOCK_CONSTANTS.runnerParameters.solutionId,
+      );
+
+      // Verify
+      expect(result).toEqual(MOCK_CONSTANTS.organizationAccounts);
+      expect(result.map(account => account.Id)).not.toContain(MOCK_CONSTANTS.testAccounts.suspended.id);
+      expect(result.map(account => account.Id)).not.toContain('888888888888');
+    });
   });
 
   describe('getOrganizationDetails', () => {
@@ -484,9 +525,11 @@ describe('functions', () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      (OrganizationsClient as any).mockImplementation(function() { return {
-        send: mockSend,
-      }; });
+      (OrganizationsClient as any).mockImplementation(function () {
+        return {
+          send: mockSend,
+        };
+      });
     });
 
     test('should return organization details when successful', async () => {
@@ -612,9 +655,11 @@ describe('functions', () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      (SSMClient as any).mockImplementation(function() { return {
-        send: mockSend,
-      }; });
+      (SSMClient as any).mockImplementation(function () {
+        return {
+          send: mockSend,
+        };
+      });
       ssmMockClient = new SSMClient({});
       mockAccountsConfig = {
         getLogArchiveAccount: vi.fn().mockReturnValue(MOCK_CONSTANTS.logArchiveAccount),
@@ -663,6 +708,54 @@ describe('functions', () => {
           credentials: MOCK_CONSTANTS.credentials,
         }),
       );
+    });
+
+    test('should read importedCentralLogBucketCmkArn for an imported bucket without an accelerator-managed key', async () => {
+      // Regression test for the SSM parameter-name mismatch root cause. An imported central log
+      // bucket without createAcceleratorManagedKey must read `importedCentralLogBucketCmkArn`
+      // (what the logging stack writes for ANY imported central log bucket), not
+      // `centralLogBucketCmkArn`. Keying off createAcceleratorManagedKey read the wrong name ->
+      // ParameterNotFound -> undefined logging bucket -> downstream security module failures.
+      vi.spyOn(lzaCommonFunctions, 'getCredentials').mockResolvedValue(MOCK_CONSTANTS.credentials);
+
+      mockSend.mockResolvedValue({ Parameter: MOCK_CONSTANTS.centralLogBucketCmkSsmParameter });
+
+      const importedNoManagedKeyGlobalConfig = {
+        ...mockImportedLoggingBucketGlobalConfig,
+        logging: {
+          ...mockImportedLoggingBucketGlobalConfig.logging,
+          centralLogBucket: {
+            importedBucket: { name: 'mock-existing-central-log-bucket' },
+          },
+        },
+      } as unknown as GlobalConfig;
+
+      const result = await getCentralLoggingResources(
+        MOCK_CONSTANTS.runnerParameters.partition,
+        MOCK_CONSTANTS.runnerParameters.solutionId,
+        MOCK_CONSTANTS.centralizedLoggingRegion,
+        MOCK_CONSTANTS.acceleratorResourceNames,
+        importedNoManagedKeyGlobalConfig,
+        mockAccountsConfig as AccountsConfig,
+        {
+          name: AcceleratorModuleStages.PREPARE,
+          runOrder: AcceleratorModuleStageOrders.logging.runOrder + 1,
+          module: {
+            name: AcceleratorModules.SETUP_CONTROL_TOWER_LANDING_ZONE,
+            executionPhase: ModuleExecutionPhase.DEPLOY,
+          },
+        },
+        MOCK_CONSTANTS.credentials,
+      );
+
+      // Verify the imported-bucket parameter name was requested, not the accelerator-created one.
+      expect(vi.mocked(GetParameterCommand)).toHaveBeenCalledWith({
+        Name: MOCK_CONSTANTS.acceleratorResourceNames.parameters.importedCentralLogBucketCmkArn,
+      });
+      expect(vi.mocked(GetParameterCommand)).not.toHaveBeenCalledWith({
+        Name: MOCK_CONSTANTS.acceleratorResourceNames.parameters.centralLogBucketCmkArn,
+      });
+      expect(result?.keyArn).toBe(MOCK_CONSTANTS.centralLogBucketCmkSsmParameter.Value);
     });
 
     test('should return undefined when parameter not found', async () => {
@@ -781,6 +874,83 @@ describe('functions', () => {
       // Verify
       expect(result).toBeUndefined();
     });
+
+    test('should assume customDeploymentRole when useManagementAccessRole is false', async () => {
+      // Setup - distinct role values so the assertion proves the correct branch is taken.
+      const getCredentialsSpy = vi
+        .spyOn(lzaCommonFunctions, 'getCredentials')
+        .mockResolvedValue(MOCK_CONSTANTS.credentials);
+      mockSend.mockResolvedValue({ Parameter: MOCK_CONSTANTS.centralLogBucketCmkSsmParameter });
+
+      const globalConfig = {
+        ...mockImportedLoggingBucketGlobalConfig,
+        managementAccountAccessRole: 'ManagementRole',
+        cdkOptions: {
+          ...(mockImportedLoggingBucketGlobalConfig.cdkOptions ?? {}),
+          useManagementAccessRole: false,
+          customDeploymentRole: 'CustomRole',
+        },
+      } as unknown as GlobalConfig;
+
+      await getCentralLoggingResources(
+        MOCK_CONSTANTS.runnerParameters.partition,
+        MOCK_CONSTANTS.runnerParameters.solutionId,
+        MOCK_CONSTANTS.centralizedLoggingRegion,
+        MOCK_CONSTANTS.acceleratorResourceNames,
+        globalConfig,
+        mockAccountsConfig as AccountsConfig,
+        {
+          name: AcceleratorModuleStages.PREPARE,
+          runOrder: AcceleratorModuleStageOrders.logging.runOrder + 1,
+          module: {
+            name: AcceleratorModules.SETUP_CONTROL_TOWER_LANDING_ZONE,
+            executionPhase: ModuleExecutionPhase.DEPLOY,
+          },
+        },
+        MOCK_CONSTANTS.credentials,
+      );
+
+      expect(getCredentialsSpy).toHaveBeenCalledWith(expect.objectContaining({ assumeRoleName: 'CustomRole' }));
+    });
+
+    test('should assume managementAccountAccessRole when useManagementAccessRole is true (takes precedence)', async () => {
+      // Setup - useManagementAccessRole must win over a configured customDeploymentRole,
+      // matching getAcceleratorModuleRunnerParameters precedence.
+      const getCredentialsSpy = vi
+        .spyOn(lzaCommonFunctions, 'getCredentials')
+        .mockResolvedValue(MOCK_CONSTANTS.credentials);
+      mockSend.mockResolvedValue({ Parameter: MOCK_CONSTANTS.centralLogBucketCmkSsmParameter });
+
+      const globalConfig = {
+        ...mockImportedLoggingBucketGlobalConfig,
+        managementAccountAccessRole: 'ManagementRole',
+        cdkOptions: {
+          ...(mockImportedLoggingBucketGlobalConfig.cdkOptions ?? {}),
+          useManagementAccessRole: true,
+          customDeploymentRole: 'CustomRole',
+        },
+      } as unknown as GlobalConfig;
+
+      await getCentralLoggingResources(
+        MOCK_CONSTANTS.runnerParameters.partition,
+        MOCK_CONSTANTS.runnerParameters.solutionId,
+        MOCK_CONSTANTS.centralizedLoggingRegion,
+        MOCK_CONSTANTS.acceleratorResourceNames,
+        globalConfig,
+        mockAccountsConfig as AccountsConfig,
+        {
+          name: AcceleratorModuleStages.PREPARE,
+          runOrder: AcceleratorModuleStageOrders.logging.runOrder + 1,
+          module: {
+            name: AcceleratorModules.SETUP_CONTROL_TOWER_LANDING_ZONE,
+            executionPhase: ModuleExecutionPhase.DEPLOY,
+          },
+        },
+        MOCK_CONSTANTS.credentials,
+      );
+
+      expect(getCredentialsSpy).toHaveBeenCalledWith(expect.objectContaining({ assumeRoleName: 'ManagementRole' }));
+    });
   });
 
   describe('getCentralLogBucketName', () => {
@@ -835,13 +1005,17 @@ describe('functions', () => {
     beforeEach(() => {
       vi.clearAllMocks();
 
-      (OrganizationsClient as any).mockImplementation(function() { return {
-        send: mockOrgSend,
-      }; });
+      (OrganizationsClient as any).mockImplementation(function () {
+        return {
+          send: mockOrgSend,
+        };
+      });
 
-      (SSMClient as any).mockImplementation(function() { return {
-        send: mockSsmSend,
-      }; });
+      (SSMClient as any).mockImplementation(function () {
+        return {
+          send: mockSsmSend,
+        };
+      });
 
       ssmMockClient = new SSMClient({});
       orgMockClient = new OrganizationsClient({});
@@ -912,6 +1086,64 @@ describe('functions', () => {
         MOCK_CONSTANTS.resourcePrefixes,
         MOCK_CONSTANTS.credentials,
       );
+    });
+
+    test('should resolve accountAccessRoleName to customDeploymentRole when useManagementAccessRole is false', async () => {
+      // Setup - distinct role values so the assertion proves the correct branch is taken.
+      configs = {
+        ...configs,
+        globalConfig: {
+          ...mockImportedLoggingBucketGlobalConfig,
+          managementAccountAccessRole: 'ManagementRole',
+          cdkOptions: {
+            ...(mockImportedLoggingBucketGlobalConfig.cdkOptions ?? {}),
+            useManagementAccessRole: false,
+            customDeploymentRole: 'CustomRole',
+          },
+        } as unknown as GlobalConfig,
+      };
+      vi.spyOn(ConfigLoader, 'getAcceleratorConfigurations').mockResolvedValue(configs);
+
+      // Execute
+      const result = await getAcceleratorModuleRunnerParameters(
+        MOCK_CONSTANTS.runnerParameters.configDirPath,
+        MOCK_CONSTANTS.runnerParameters.partition,
+        MOCK_CONSTANTS.resourcePrefixes,
+        MOCK_CONSTANTS.runnerParameters.solutionId,
+        MOCK_CONSTANTS.credentials,
+      );
+
+      // Verify
+      expect(result.accountAccessRoleName).toBe('CustomRole');
+    });
+
+    test('should resolve accountAccessRoleName to managementAccountAccessRole when useManagementAccessRole is true', async () => {
+      // Setup - useManagementAccessRole takes precedence over customDeploymentRole.
+      configs = {
+        ...configs,
+        globalConfig: {
+          ...mockImportedLoggingBucketGlobalConfig,
+          managementAccountAccessRole: 'ManagementRole',
+          cdkOptions: {
+            ...(mockImportedLoggingBucketGlobalConfig.cdkOptions ?? {}),
+            useManagementAccessRole: true,
+            customDeploymentRole: 'CustomRole',
+          },
+        } as unknown as GlobalConfig,
+      };
+      vi.spyOn(ConfigLoader, 'getAcceleratorConfigurations').mockResolvedValue(configs);
+
+      // Execute
+      const result = await getAcceleratorModuleRunnerParameters(
+        MOCK_CONSTANTS.runnerParameters.configDirPath,
+        MOCK_CONSTANTS.runnerParameters.partition,
+        MOCK_CONSTANTS.resourcePrefixes,
+        MOCK_CONSTANTS.runnerParameters.solutionId,
+        MOCK_CONSTANTS.credentials,
+      );
+
+      // Verify
+      expect(result.accountAccessRoleName).toBe('ManagementRole');
     });
 
     test('should return correct parameters when centralized logging region is enabled', async () => {
@@ -1069,6 +1301,40 @@ describe('functions', () => {
 
       // Verify
       expect(result).toBe(false);
+    });
+  });
+
+  describe('resolveModuleAccountAccessRole', () => {
+    const buildGlobalConfig = (cdkOptions: Record<string, unknown>) =>
+      ({
+        managementAccountAccessRole: 'ManagementRole',
+        cdkOptions,
+      }) as unknown as GlobalConfig;
+
+    test('returns managementAccountAccessRole when useManagementAccessRole is true (takes precedence)', () => {
+      const result = resolveModuleAccountAccessRole(
+        buildGlobalConfig({ useManagementAccessRole: true, customDeploymentRole: 'CustomRole' }),
+      );
+      expect(result).toBe('ManagementRole');
+    });
+
+    test('returns customDeploymentRole when useManagementAccessRole is false and customDeploymentRole is set', () => {
+      const result = resolveModuleAccountAccessRole(
+        buildGlobalConfig({ useManagementAccessRole: false, customDeploymentRole: 'CustomRole' }),
+      );
+      expect(result).toBe('CustomRole');
+    });
+
+    test('returns managementAccountAccessRole when customDeploymentRole is not set', () => {
+      const result = resolveModuleAccountAccessRole(buildGlobalConfig({ useManagementAccessRole: false }));
+      expect(result).toBe('ManagementRole');
+    });
+
+    test('returns managementAccountAccessRole when cdkOptions is undefined', () => {
+      const result = resolveModuleAccountAccessRole({
+        managementAccountAccessRole: 'ManagementRole',
+      } as unknown as GlobalConfig);
+      expect(result).toBe('ManagementRole');
     });
   });
 });

@@ -11,6 +11,7 @@
  *  and limitations under the License.
  */
 
+export * from './lib/aws-client-factory';
 export * from './lib/check-stack-diffs';
 export * from './lib/common-functions';
 export * from './lib/common-resources';
@@ -30,6 +31,7 @@ export * from './lib/set-organizations-client';
 export * from './lib/set-token-preferences';
 export * from './lib/ssm-parameter-path';
 export * from './lib/throttle';
+export * from './lib/caching-credential-provider';
 
 //
 // Common integration test utilities

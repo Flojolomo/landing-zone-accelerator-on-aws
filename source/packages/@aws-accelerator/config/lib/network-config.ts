@@ -192,6 +192,7 @@ export class RouteTableConfig implements i.IRouteTableConfig {
   readonly gatewayAssociation: i.GatewayRouteTableType | undefined = undefined;
   readonly routes: RouteTableEntryConfig[] | undefined = undefined;
   readonly tags: t.Tag[] | undefined = undefined;
+  readonly enableRoutePropagation: boolean | undefined = undefined;
 }
 
 export class SubnetPrivateDnsConfig implements i.ISubnetPrivateDnsConfig {
@@ -272,6 +273,8 @@ export class TransitGatewayConnectConfig implements i.ITransitGatewayConnectConf
   readonly vpc?: i.ITransitGatewayConnectVpcConfig | undefined;
   readonly directConnect?: string = '';
   readonly options: TransitGatewayConnectOptionsConfig | undefined = undefined;
+  readonly routeTableAssociations: string[] | undefined = undefined;
+  readonly routeTablePropagations: string[] | undefined = undefined;
   readonly tags: t.Tag[] | undefined = undefined;
 }
 
@@ -299,6 +302,7 @@ export class GatewayEndpointConfig implements i.IGatewayEndpointConfig {
 export class InterfaceEndpointServiceConfig implements i.IInterfaceEndpointServiceConfig {
   readonly service: string = '';
   readonly serviceName: string | undefined = undefined;
+  readonly hostedZoneName: string | undefined = undefined;
   readonly policy: string | undefined = undefined;
   readonly applyPolicy: boolean | undefined = true;
   readonly securityGroup: string | undefined = undefined;
@@ -826,6 +830,7 @@ export class GwlbConfig implements i.IGwlbConfig {
   readonly deletionProtection: boolean | undefined = undefined;
   readonly targetGroup: string | undefined = undefined;
   readonly tags: t.Tag[] | undefined = undefined;
+  readonly tcpIdleTimeout: number | undefined = undefined;
 }
 
 export class CentralNetworkServicesConfig implements i.ICentralNetworkServicesConfig {

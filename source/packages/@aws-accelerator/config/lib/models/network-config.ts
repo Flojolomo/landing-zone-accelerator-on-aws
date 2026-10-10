@@ -1492,6 +1492,18 @@ export interface IRouteTableConfig {
    * (OPTIONAL) An array of tag objects for the VPC route table.
    */
   readonly tags?: t.ITag[];
+  /**
+   * (OPTIONAL) Enable VPN Gateway route propagation for this route table.
+   *
+   * @remarks
+   * When set to `true`, routes learned via BGP from the VPN Gateway will be automatically
+   * propagated to this route table. This requires a Virtual Private Gateway to be defined for the VPC.
+   *
+   * **Note:** This feature requires v2 stacks to be enabled in your configuration.
+   *
+   * @see {@link https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_ec2.CfnVPNGatewayRoutePropagation.html | CfnVPNGatewayRoutePropagation}
+   */
+  readonly enableRoutePropagation?: boolean;
 }
 
 /**
@@ -2088,6 +2100,29 @@ export interface ITransitGatewayConnectConfig {
    */
   readonly options?: ITransitGatewayConnectOptionsConfig;
   /**
+   * (OPTIONAL) The friendly name of a Transit Gateway route table to associate the Connect attachment to.
+   *
+   * @remarks
+   * This is the logical `name` property of the route table as defined in network-config.yaml.
+   *
+   * **CAUTION**: Changing this value after initial deployment causes a new association to be created.
+   * Attachments can only have a single association at a time.
+   * To avoid core pipeline failures, use multiple core pipeline runs to 1) delete the existing
+   * association and then 2) add the new association.
+   *
+   * @see {@link TransitGatewayRouteTableConfig}
+   */
+  readonly routeTableAssociations?: t.NonEmptyString[];
+  /**
+   * (OPTIONAL) An array of friendly names of Transit Gateway route tables to propagate the Connect attachment.
+   *
+   * @remarks
+   * This is the logical `name` property of the route table as defined in network-config.yaml.
+   *
+   * @see {@link TransitGatewayRouteTableConfig}
+   */
+  readonly routeTablePropagations?: t.NonEmptyString[];
+  /**
    * (OPTIONAL) An array of tag objects for the Transit Gateway attachment.
    */
   readonly tags?: t.ITag[];
@@ -2310,6 +2345,9 @@ export interface IGatewayEndpointConfig {
  * ```
  * - service: ec2
  *   policy: Default
+ * - service: route53
+ *   serviceName: com.amazonaws.route53
+ *   hostedZoneName: route53.amazonaws.com
  * ```
  */
 export interface IInterfaceEndpointServiceConfig {
@@ -2335,6 +2373,20 @@ export interface IInterfaceEndpointServiceConfig {
    * conform with the standard `com.amazonaws.<REGION>.<SERVICE>` syntax.
    */
   readonly serviceName?: t.NonEmptyString;
+  /**
+   * (OPTIONAL) The full private hosted zone name to create for this interface endpoint.
+   *
+   * @remarks
+   * This property can be used to override LZA's default PHZ-name derivation for
+   * interface endpoints whose hosted zone does not conform to the standard
+   * `<service>.<region>.amazonaws.com` pattern (for example, global services).
+   * Typically set together with `serviceName`.
+   *
+   * Length is capped at 1024 characters to match the Route 53 `CreateHostedZone`
+   * API limit for the `Name` field; values longer than 1024 characters are rejected
+   * by the network-config validator at parse time.
+   */
+  readonly hostedZoneName?: t.NonEmptyString;
   /**
    * (OPTIONAL) The friendly name of a policy for the interface endpoint. If left undefined, the default policy will be used.
    *
@@ -3145,6 +3197,8 @@ export interface IDhcpOptsConfig {
   readonly regions: string[];
   /**
    * (OPTIONAL) A domain name to assign to hosts using the options set.
+   * You may specify a single domain name (for example, `example.com`) or multiple domain names separated by spaces (for example, `example.com example.org`).
+   * CAUTION: Multiple domain names are only honored by some Linux operating systems. Windows and other Linux operating systems treat the value as a single domain name, which results in unexpected behavior. If the options set is associated with a VPC that has instances running operating systems that treat the value as a single domain, specify only one domain name. See https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateDhcpOptions.html for more information.
    *
    * @remarks
    * **CAUTION**: Changing this property value after initial deployment causes the DHCP options set to be recreated.
@@ -5055,6 +5109,10 @@ export interface IResolverRuleConfig {
   /**
    * (OPTIONAL) The friendly name of an inbound endpoint to target.
    *
+   * A FORWARD rule must be created with a target. You must specify exactly one of `inboundEndpointTarget`
+   * or `targetIps` on a FORWARD rule. Defining both, or omitting both, fails validation. This property is
+   * marked optional only because `targetIps` is the alternative way to supply the rule's target.
+   *
    * @remarks
    * This is the logical `name` property of an INBOUND endpoint as defined in network-config.yaml.
    *
@@ -5098,6 +5156,16 @@ export interface IResolverRuleConfig {
   readonly shareTargets?: t.IShareTargets;
   /**
    * (OPTIONAL) An array of target IP configurations for the resolver rule.
+   *
+   * A FORWARD rule must be created with a target. You must specify exactly one of `targetIps` or
+   * `inboundEndpointTarget` on a FORWARD rule. Defining both, or omitting both, fails validation. This
+   * property is marked optional only because `inboundEndpointTarget` is the alternative way to supply the
+   * rule's target.
+   *
+   * When this FORWARD rule is referenced by a managed Active Directory's `resolverRuleName` property, you
+   * must still seed `targetIps` with at least one placeholder IP address. The managed AD integration
+   * updates an existing rule by replacing its target IP addresses with the directory's DNS server IPs (and
+   * reads the DNS port from an existing target entry); it cannot populate a rule that has no target.
    *
    * @remarks
    * Use this property to define target IP addresses/ports to forward DNS queries to.
@@ -5327,12 +5395,13 @@ export type DnsFirewallManagedDomainListsType =
  * @example
  * The following example creates a rule that blocks requests from a custom list of domains.
  * The custom domain list path must exist in your accelerator configuration repository.
+ * Nested directory paths are supported. The domain list name is derived from the filename.
  * ```
  * - name: accelerator-dns-rule
  *   action: BLOCK
  *   priority: 100
  *   blockResponse: NXDOMAIN
- *   customDomainList: path/to/domains.txt
+ *   customDomainList: dns-firewall/blocked-domains.txt
  * ```
  *
  * The following example creates a rule referencing an AWS-managed domain list.
@@ -5395,8 +5464,14 @@ export interface IDnsFirewallRulesConfig {
    * A file containing a custom domain list in TXT format.
    *
    * @remarks
+   * The path is relative to the root of your accelerator configuration repository.
    * The file must exist in your accelerator configuration repository.
    * The file must contain domain names separated by newlines.
+   *
+   * The domain list name is derived from the filename (without extension). For example,
+   * `dns-firewall/lists/blocked-domains.txt` creates a domain list named `blocked-domains`.
+   * Nested directory paths are supported. Each domain list file must have a unique filename
+   * across all rules in the rule group, regardless of the directory structure.
    *
    * Include only one of `customDomainList` or `managedDomainList` for each rule definition.
    */
@@ -5428,7 +5503,9 @@ export interface IDnsFirewallRulesConfig {
  *
  * The following example creates a rule group that contains one rule entry.
  * The rule blocks a list of custom domains contained in a file in the accelerator
- * configuration repository. The rule group is shared to the entire organization.
+ * configuration repository. Nested directory paths are supported.
+ * The domain list name is derived from the filename (e.g. `blocked-domains`).
+ * The rule group is shared to the entire organization.
  * @example
  * ```
  * - name: accelerator-rule-group
@@ -5439,7 +5516,7 @@ export interface IDnsFirewallRulesConfig {
  *       action: BLOCK
  *       priority: 100
  *       blockResponse: NXDOMAIN
- *       customDomainList: path/to/domains.txt
+ *       customDomainList: dns-firewall/blocked-domains.txt
  *   shareTargets:
  *     organizationalUnits:
  *       - Root
@@ -5491,6 +5568,10 @@ export interface IDnsFirewallRuleGroupConfig {
  * @description
  * Use this configuration to define local resolver endpoints and Route 53 query logging to the VPC.
  *
+ * Note: Resolver rules are not supported here. A `rules` array defined on endpoints under
+ * `vpcRoute53Resolver` is silently ignored. Define resolver rules under
+ * `centralNetworkServices.route53Resolver` instead.
+ *
  * @example
  * ```
  * vpcRoute53Resolver:
@@ -5503,7 +5584,6 @@ export interface IDnsFirewallRuleGroupConfig {
  *       subnets:
  *         - Subnet-A
  *         - Subnet-B
- *       rules: []
  *       tags: []
  *   queryLogs:
  *     name: accelerator-query-logs
@@ -5563,7 +5643,7 @@ export interface IVpcResolverConfig {
  *           action: BLOCK
  *           priority: 100
  *           blockResponse: NXDOMAIN
- *           customDomainList: path/to/domains.txt
+ *           customDomainList: dns-firewall/blocked-domains.txt
  *       shareTargets:
  *         organizationalUnits:
  *           - Root
@@ -5637,8 +5717,10 @@ export type NfwStatelessRuleActionType = 'aws:pass' | 'aws:drop' | 'aws:forward_
 export type NfwStatefulDefaultActionType =
   | 'aws:drop_strict'
   | 'aws:drop_established'
+  | 'aws:drop_established_app_layer'
   | 'aws:alert_strict'
-  | 'aws:alert_established';
+  | 'aws:alert_established'
+  | 'aws:alert_established_app_layer';
 export type NfwStatelessRuleTcpFlagType = 'FIN' | 'SYN' | 'RST' | 'PSH' | 'ACK' | 'URG' | 'ECE' | 'CWR';
 export type NfwStatefulRuleOptionsType = 'DEFAULT_ACTION_ORDER' | 'STRICT_ORDER';
 export type NfwLogType = 'ALERT' | 'FLOW';
@@ -6349,6 +6431,20 @@ export interface INfwRuleVariableDefinitionConfig {
   readonly name: t.NonEmptyString;
   /**
    * An array of values for the rule variable.
+   *
+   * The accepted value syntax depends on the rule variable type that this definition belongs to.
+   * For `ipSets`, each value is an IPv4 address or CIDR range, for example `'10.0.0.0/16'`.
+   * For `portSets`, each value is either a single TCP/UDP port (a number between `0` and `65535`,
+   * for example `'443'`) or a port range. A port range is two numbers separated by a colon (`:`)
+   * in the form `'<fromPort>:<toPort>'`, for example `'1024:2048'`, where the colon denotes an
+   * inclusive range from `fromPort` through `toPort`. Both ends must be between `0` and `65535`,
+   * and `fromPort` must be less than or equal to `toPort` (`'1024:2048'` is valid; `'2048:1024'`
+   * is rejected). Single ports and ranges can be combined in the same array, for example
+   * `['80', '443', '1024:2048']`. The colon range notation matches the syntax accepted by the
+   * AWS Network Firewall API and console.
+   *
+   * @see {@link https://docs.aws.amazon.com/network-firewall/latest/APIReference/API_PortSet.html | Network Firewall PortSet API reference}
+   * @see {@link https://docs.aws.amazon.com/network-firewall/latest/developerguide/suricata-examples.html#suricata-example-rule-with-variables | Suricata rule variable examples}
    */
   readonly definition: t.NonEmptyString[];
 }
@@ -6363,11 +6459,20 @@ export interface INfwRuleVariableDefinitionConfig {
  * Rule variables can be used in Suricata-compatible and domain list rule definitions.
  * They are not supported in stateful rule IP header definitions.
  *
+ * `ipSets` hold IP addresses and CIDR ranges; `portSets` hold individual TCP/UDP
+ * ports and/or port ranges. Port ranges use colon notation (`'<fromPort>:<toPort>'`,
+ * for example `'1024:2048'`) and can be combined with single ports in the same array.
+ *
  * @see {@link https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-networkfirewall-rulegroup-rulevariables.html}
+ * @see {@link https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-networkfirewall-rulegroup-portset.html | CloudFormation PortSet reference}
+ * @see {@link https://docs.aws.amazon.com/network-firewall/latest/developerguide/suricata-examples.html#suricata-example-rule-with-variables | Network Firewall Suricata rule variable examples}
  *
  * @example
  * CURRENT SYNTAX: use the following syntax when defining new rule variables in v1.3.1 and newer.
  * The additional example underneath is provided for backward compatibility.
+ *
+ * Port values support single ports (`'443'`) and inclusive port ranges using a
+ * colon separator (`'1024:2048'`). Both forms may be mixed in one definition array.
  * ```
  * ipSets:
  *   - name: HOME_NET
@@ -6375,6 +6480,10 @@ export interface INfwRuleVariableDefinitionConfig {
  * portSets:
  *   - name: HOME_NET
  *     definition: ['80', '443']
+ *   - name: EPHEMERAL_PORTS
+ *     definition: ['1024:65535']
+ *   - name: CUSTOM_PORTS
+ *     definition: ['80', '443', '1024:2048']
  * ```
  *
  * THE BELOW EXAMPLE SYNTAX IS DEPRECATED: use the above syntax when defining new or more than one rule variable
@@ -6389,15 +6498,25 @@ export interface INfwRuleVariableDefinitionConfig {
  */
 export interface INfwRuleVariableConfig {
   /**
-   * A Network Firewall rule variable definition configuration.
+   * A Network Firewall rule variable definition for IP addresses.
+   *
+   * Each `definition` value is an IPv4 address or CIDR range (for example
+   * `'10.0.0.0/16'`).
    *
    * @see {@link NfwRuleVariableDefinitionConfig}
    */
   readonly ipSets: INfwRuleVariableDefinitionConfig | INfwRuleVariableDefinitionConfig[];
   /**
-   * A Network Firewall rule variable definition configuration.
+   * A Network Firewall rule variable definition for TCP/UDP ports.
+   *
+   * Each `definition` value is either a single port (`'443'`) or an inclusive
+   * port range expressed with a colon separator (`'<fromPort>:<toPort>'`, for
+   * example `'1024:2048'`). Single ports and ranges may be combined in the same
+   * array (`['80', '443', '1024:2048']`). All port numbers must be between `0`
+   * and `65535`, and for ranges `fromPort` must be less than or equal to `toPort`.
    *
    * @see {@link NfwRuleVariableDefinitionConfig}
+   * @see {@link https://docs.aws.amazon.com/network-firewall/latest/APIReference/API_PortSet.html | PortSet API reference}
    */
   readonly portSets: INfwRuleVariableDefinitionConfig | INfwRuleVariableDefinitionConfig[];
 }
@@ -7162,6 +7281,22 @@ export interface IGwlbConfig {
    * (OPTIONAL) An array of CloudFormation tag objects.
    */
   readonly tags?: t.ITag[];
+  /**
+   * (OPTIONAL) The TCP idle timeout value for the Gateway Load Balancer, in seconds.
+   *
+   * @remarks
+   * This value can be set between 60 and 6000 seconds. If not specified,
+   * the GWLB default of 350 seconds is used. Aligning this value with your
+   * target appliance's TCP idle timeout helps prevent traffic disruptions
+   * for long-lived idle connections.
+   *
+   * @minimum 60
+   * @maximum 6000
+   * @asType integer
+   *
+   * @see {@link https://docs.aws.amazon.com/elasticloadbalancing/latest/gateway/gateway-load-balancers.html#idle-timeout}
+   */
+  readonly tcpIdleTimeout?: number;
 }
 
 /**

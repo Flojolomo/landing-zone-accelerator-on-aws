@@ -36,6 +36,10 @@ const v2TestNamePatterns: { testName: string; stackKey: string }[] = [
     stackKey: 'RouteTableStack-Network-us-east-1-Network-Secondary',
   },
   {
+    testName: 'Construct(RouteTableStack-Network-us-east-1-Network-Inspection-V2): ',
+    stackKey: 'RouteTableStack-Network-us-east-1-Network-Inspection-V2',
+  },
+  {
     testName: 'Construct(SecurityGroupStack-Network-us-east-1-Network-Secondary-V2): ',
     stackKey: 'SecurityGroupStack-Network-us-east-1-Network-Secondary-V2',
   },
@@ -90,6 +94,10 @@ const v2TestNamePatterns: { testName: string; stackKey: string }[] = [
   {
     testName: 'Construct(LbStack-Network-us-east-1-Network-Secondary): ',
     stackKey: 'LbStack-Network-us-east-1-Network-Secondary',
+  },
+  {
+    testName: 'Construct(VpcStack-Network-us-east-1-Network-FlowLogsS3Only-V2): ',
+    stackKey: 'VpcStack-Network-us-east-1-Network-FlowLogsS3Only-V2',
   },
 ];
 

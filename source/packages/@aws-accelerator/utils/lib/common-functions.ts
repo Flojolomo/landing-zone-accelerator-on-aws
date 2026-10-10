@@ -64,15 +64,17 @@ export async function getCrossAccountCredentials(
   }
 }
 
-export async function getCurrentAccountId(partition: string, region: string): Promise<string> {
-  logger.debug(
-    `Sts endpoint for partition ${partition} and region ${region} is : ${getStsEndpoint(partition, region)}`,
-  );
-  const stsClient = new STSClient({
-    region,
-    retryStrategy: setRetryStrategy(),
-    endpoint: getStsEndpoint(partition, region),
-  });
+export async function getCurrentAccountId(partition: string, region: string, stsClient?: STSClient): Promise<string> {
+  if (!stsClient) {
+    logger.debug(
+      `Sts endpoint for partition ${partition} and region ${region} is : ${getStsEndpoint(partition, region)}`,
+    );
+    stsClient = new STSClient({
+      region,
+      retryStrategy: setRetryStrategy(),
+      endpoint: getStsEndpoint(partition, region),
+    });
+  }
   try {
     const response = await throttlingBackOff(() => stsClient.send(new GetCallerIdentityCommand({})));
     logger.debug(`Current account id is ${response.Account!}`);
@@ -199,6 +201,29 @@ export function getStsEndpoint(partition: string, region: string): string {
   }
   // both commercial and govCloud return this pattern
   return `https://sts.${region}.amazonaws.com`;
+}
+
+/**
+ * Returns the VPC endpoint service name prefix for the given partition.
+ *
+ * VPC endpoint service names follow the pattern `{prefix}.{region}.{service}`.
+ * The prefix varies by partition:
+ * - aws, aws-us-gov: com.amazonaws
+ * - aws-cn: cn.com.amazonaws
+ * - aws-eusc: eu.amazonaws
+ *
+ * @param partition - The AWS partition identifier
+ * @returns The VPC endpoint service name prefix for the partition
+ */
+export function getVpcEndpointServicePrefix(partition: string): string {
+  switch (partition) {
+    case 'aws-cn':
+      return 'cn.com.amazonaws';
+    case 'aws-eusc':
+      return 'eu.amazonaws';
+    default:
+      return 'com.amazonaws';
+  }
 }
 
 // Converts strings with wildcards (*) to regular expressions to determine if log group name matches exclusion pattern
@@ -346,6 +371,41 @@ export function getNodeVersion(): number {
     );
   }
   return nodeVersion;
+}
+
+/**
+ * Returns a shell command that activates the Node.js runtime already baked into the
+ * CodeBuild managed image by prepending its bin directory to `PATH`.
+ *
+ * @remarks
+ * CodeBuild standard images pre-install several Node.js majors (via `n`) but only
+ * default-activate one of them (for example `aws/codebuild/standard:7.0` defaults to
+ * Node 18, even though 20/22/24 are also on disk). Requesting a different, *non-default*
+ * major through the buildspec `runtime-versions: { nodejs: <major> }` directive makes the
+ * CodeBuild agent re-provision that runtime on every build, adding ~60s of wall-clock time
+ * per run. Because the target binaries are already present under n's version directory,
+ * we skip `runtime-versions` entirely and prepend the matching version to `PATH` instead —
+ * an instant, network-free switch. The exported `PATH` persists to later buildspec phases.
+ *
+ * The command fails loudly (exit 1) if the requested major is not pre-installed, rather
+ * than silently running the image default (which could be below the supported minimum).
+ *
+ * Only `$NAME` / `$(...)` shell syntax is used (no `${...}`) so the returned string is safe
+ * to embed in a buildspec even when `nodeVersionMajor` is a CloudFormation token rendered
+ * through `Fn::Sub`.
+ *
+ * @param nodeVersionMajor Node.js major version to activate. Accepts a number, a string, or
+ * a CloudFormation token. Defaults to {@link getNodeVersion}.
+ * @returns A single shell command string suitable for a CodeBuild `install` phase.
+ */
+export function getNodeRuntimeActivationCommand(nodeVersionMajor: number | string = getNodeVersion()): string {
+  const nodeVersionsDir = '/usr/local/n/versions/node';
+  return (
+    `NODE_BIN="$(ls -d ${nodeVersionsDir}/${nodeVersionMajor}.*/bin 2>/dev/null | sort -V | tail -1)" && ` +
+    `if [ -z "$NODE_BIN" ]; then ` +
+    `echo "ERROR: Node.js ${nodeVersionMajor}.x is not pre-installed in this CodeBuild image" >&2; exit 1; ` +
+    `fi && export PATH="$NODE_BIN:$PATH" && node --version`
+  );
 }
 
 /**

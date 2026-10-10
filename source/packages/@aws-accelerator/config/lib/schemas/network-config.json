@@ -566,7 +566,7 @@
         },
         "domainName": {
           "$ref": "#/definitions/NonEmptyString",
-          "description": "(OPTIONAL) A domain name to assign to hosts using the options set."
+          "description": "(OPTIONAL) A domain name to assign to hosts using the options set. You may specify a single domain name (for example, `example.com`) or multiple domain names separated by spaces (for example, `example.com example.org`). CAUTION: Multiple domain names are only honored by some Linux operating systems. Windows and other Linux operating systems treat the value as a single domain name, which results in unexpected behavior. If the options set is associated with a VPC that has instances running operating systems that treat the value as a single domain, specify only one domain name. See https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateDhcpOptions.html for more information."
         },
         "domainNameServers": {
           "description": "(OPTIONAL) An array of IP addresses for domain name servers.",
@@ -621,7 +621,7 @@
     },
     "IDnsFirewallRuleGroupConfig": {
       "additionalProperties": false,
-      "description": "Use this configuration to define a group of rules for your DNS firewall.\nRule groups contain one to many rules that can be associated with VPCs in your environment.\nThese rules allow you to define the behavior of your DNS firewall.\n\nThe following example creates a rule group that contains one rule entry.\nThe rule blocks a list of custom domains contained in a file in the accelerator\nconfiguration repository. The rule group is shared to the entire organization.",
+      "description": "Use this configuration to define a group of rules for your DNS firewall.\nRule groups contain one to many rules that can be associated with VPCs in your environment.\nThese rules allow you to define the behavior of your DNS firewall.\n\nThe following example creates a rule group that contains one rule entry.\nThe rule blocks a list of custom domains contained in a file in the accelerator\nconfiguration repository. Nested directory paths are supported.\nThe domain list name is derived from the filename (e.g. `blocked-domains`).\nThe rule group is shared to the entire organization.",
       "properties": {
         "name": {
           "$ref": "#/definitions/NonEmptyString",
@@ -1069,6 +1069,12 @@
           "$ref": "#/definitions/NonEmptyString",
           "description": "(OPTIONAL) The friendly name of a target group to forward traffic to"
         },
+        "tcpIdleTimeout": {
+          "description": "(OPTIONAL) The TCP idle timeout value for the Gateway Load Balancer, in seconds.",
+          "maximum": 6000,
+          "minimum": 60,
+          "type": "integer"
+        },
         "vpc": {
           "$ref": "#/definitions/NonEmptyString",
           "description": "The friendly name of the VPC to deploy the Gateway Load Balancer to."
@@ -1185,6 +1191,10 @@
         "applyPolicy": {
           "description": "(OPTIONAL) Specify whether or not a policy is applied to the endpoint. By default, if no policy is specified in the `policy` property, a default policy is applied. Specifying this option as `false` will ensure no policy is applied to the endpoint. This property defaults to `true` if not specified.",
           "type": "boolean"
+        },
+        "hostedZoneName": {
+          "$ref": "#/definitions/NonEmptyString",
+          "description": "(OPTIONAL) The full private hosted zone name to create for this interface endpoint."
         },
         "policy": {
           "$ref": "#/definitions/NonEmptyString",
@@ -2549,7 +2559,7 @@
     },
     "INfwRuleVariableConfig": {
       "additionalProperties": false,
-      "description": "Use this configuration to define rule variable definitions for Network Firewall.\nRule variables can be used in Suricata-compatible and domain list rule definitions.\nThey are not supported in stateful rule IP header definitions.",
+      "description": "Use this configuration to define rule variable definitions for Network Firewall.\nRule variables can be used in Suricata-compatible and domain list rule definitions.\nThey are not supported in stateful rule IP header definitions.\n\n`ipSets` hold IP addresses and CIDR ranges; `portSets` hold individual TCP/UDP\nports and/or port ranges. Port ranges use colon notation (`'<fromPort>:<toPort>'`,\nfor example `'1024:2048'`) and can be combined with single ports in the same array.",
       "properties": {
         "ipSets": {
           "anyOf": [
@@ -2563,7 +2573,7 @@
               "type": "array"
             }
           ],
-          "description": "A Network Firewall rule variable definition configuration."
+          "description": "A Network Firewall rule variable definition for IP addresses.\n\nEach `definition` value is an IPv4 address or CIDR range (for example `'10.0.0.0/16'`)."
         },
         "portSets": {
           "anyOf": [
@@ -2577,7 +2587,7 @@
               "type": "array"
             }
           ],
-          "description": "A Network Firewall rule variable definition configuration."
+          "description": "A Network Firewall rule variable definition for TCP/UDP ports.\n\nEach `definition` value is either a single port (`'443'`) or an inclusive port range expressed with a colon separator (`'<fromPort>:<toPort>'`, for example `'1024:2048'`). Single ports and ranges may be combined in the same array (`['80', '443', '1024:2048']`). All port numbers must be between `0` and `65535`, and for ranges `fromPort` must be less than or equal to `toPort`."
         }
       },
       "required": [
@@ -2591,7 +2601,7 @@
       "description": "Use this configuration to define rule variable definitions for Network Firewall.\nRule variables can be used in Suricata-compatible and domain list rule definitions.\nThey are not supported in stateful rule IP header definitions.",
       "properties": {
         "definition": {
-          "description": "An array of values for the rule variable.",
+          "description": "An array of values for the rule variable.\n\nThe accepted value syntax depends on the rule variable type that this definition belongs to. For `ipSets`, each value is an IPv4 address or CIDR range, for example `'10.0.0.0/16'`. For `portSets`, each value is either a single TCP/UDP port (a number between `0` and `65535`, for example `'443'`) or a port range. A port range is two numbers separated by a colon (`:`) in the form `'<fromPort>:<toPort>'`, for example `'1024:2048'`, where the colon denotes an inclusive range from `fromPort` through `toPort`. Both ends must be between `0` and `65535`, and `fromPort` must be less than or equal to `toPort` (`'1024:2048'` is valid; `'2048:1024'` is rejected). Single ports and ranges can be combined in the same array, for example `['80', '443', '1024:2048']`. The colon range notation matches the syntax accepted by the AWS Network Firewall API and console.",
           "items": {
             "$ref": "#/definitions/NonEmptyString"
           },
@@ -3015,7 +3025,7 @@
         },
         "inboundEndpointTarget": {
           "$ref": "#/definitions/NonEmptyString",
-          "description": "(OPTIONAL) The friendly name of an inbound endpoint to target."
+          "description": "(OPTIONAL) The friendly name of an inbound endpoint to target.\n\nA FORWARD rule must be created with a target. You must specify exactly one of `inboundEndpointTarget` or `targetIps` on a FORWARD rule. Defining both, or omitting both, fails validation. This property is marked optional only because `targetIps` is the alternative way to supply the rule's target."
         },
         "name": {
           "$ref": "#/definitions/NonEmptyString",
@@ -3037,7 +3047,7 @@
           "type": "array"
         },
         "targetIps": {
-          "description": "(OPTIONAL) An array of target IP configurations for the resolver rule.",
+          "description": "(OPTIONAL) An array of target IP configurations for the resolver rule.\n\nA FORWARD rule must be created with a target. You must specify exactly one of `targetIps` or `inboundEndpointTarget` on a FORWARD rule. Defining both, or omitting both, fails validation. This property is marked optional only because `inboundEndpointTarget` is the alternative way to supply the rule's target.\n\nWhen this FORWARD rule is referenced by a managed Active Directory's `resolverRuleName` property, you must still seed `targetIps` with at least one placeholder IP address. The managed AD integration updates an existing rule by replacing its target IP addresses with the directory's DNS server IPs (and reads the DNS port from an existing target entry); it cannot populate a rule that has no target.",
           "items": {
             "$ref": "#/definitions/IRuleTargetIps"
           },
@@ -3054,6 +3064,10 @@
       "additionalProperties": false,
       "description": "Use this configuration to define custom route tables for your VPC.\nRoute tables contain a set of rules, called routes, to determine where network traffic from a subnet or gateway is directed.",
       "properties": {
+        "enableRoutePropagation": {
+          "description": "(OPTIONAL) Enable VPN Gateway route propagation for this route table.",
+          "type": "boolean"
+        },
         "gatewayAssociation": {
           "$ref": "#/definitions/GatewayRouteTableType",
           "description": "Designate a gateway to associate this route table with."
@@ -3835,6 +3849,20 @@
           "$ref": "#/definitions/NonEmptyString",
           "description": "The AWS Region for the attachment."
         },
+        "routeTableAssociations": {
+          "description": "(OPTIONAL) The friendly name of a Transit Gateway route table to associate the Connect attachment to.",
+          "items": {
+            "$ref": "#/definitions/NonEmptyString"
+          },
+          "type": "array"
+        },
+        "routeTablePropagations": {
+          "description": "(OPTIONAL) An array of friendly names of Transit Gateway route tables to propagate the Connect attachment.",
+          "items": {
+            "$ref": "#/definitions/NonEmptyString"
+          },
+          "type": "array"
+        },
         "tags": {
           "description": "(OPTIONAL) An array of tag objects for the Transit Gateway attachment.",
           "items": {
@@ -4542,7 +4570,7 @@
     },
     "IVpcResolverConfig": {
       "additionalProperties": false,
-      "description": "Use this configuration to define local resolver endpoints and Route 53 query logging to the VPC.",
+      "description": "Use this configuration to define local resolver endpoints and Route 53 query logging to the VPC.\n\nNote: Resolver rules are not supported here. A `rules` array defined on endpoints under\n`vpcRoute53Resolver` is silently ignored. Define resolver rules under\n`centralNetworkServices.route53Resolver` instead.",
       "properties": {
         "endpoints": {
           "description": "(OPTIONAL) An array of Route 53 resolver endpoint configurations.",
@@ -4993,8 +5021,10 @@
       "enum": [
         "aws:drop_strict",
         "aws:drop_established",
+        "aws:drop_established_app_layer",
         "aws:alert_strict",
-        "aws:alert_established"
+        "aws:alert_established",
+        "aws:alert_established_app_layer"
       ],
       "type": "string"
     },

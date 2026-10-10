@@ -45,12 +45,13 @@
  * ```
  */
 
-import path from 'path';
 import { AssumeRoleCommand, GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
-import { IAssumeRoleCredential, AssumeRoleCredentialType, ISessionContext } from './interfaces';
-import { executeApi, setRetryStrategy } from './utility';
-import { MODULE_EXCEPTIONS } from './types';
+import path from 'node:path';
+import { credentialCache } from './credential-cache';
+import { AssumeRoleCredentialType, IAssumeRoleCredential, ISessionContext } from './interfaces';
 import { createLogger } from './logger';
+import { MODULE_EXCEPTIONS } from './types';
+import { executeApi, setRetryStrategy } from './utility';
 
 /**
  * Logger instance for STS functions with file-based context.
@@ -145,6 +146,19 @@ const logger = createLogger([path.parse(path.basename(__filename)).name]);
  * // Returns undefined if already in target role context
  * ```
  */
+/**
+ * Simple string hash for cache key differentiation.
+ * Not cryptographic — just needs to produce distinct values for distinct policies.
+ */
+function hashCode(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash + char) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
 export async function getCredentials(options: {
   accountId: string;
   region: string;
@@ -155,6 +169,14 @@ export async function getCredentials(options: {
   assumeRoleArn?: string;
   sessionName?: string;
   credentials?: AssumeRoleCredentialType;
+  /** Inline JSON session policy to restrict assumed role permissions (max 2048 chars) */
+  sessionPolicy?: string;
+  /** When true, throws if sessionPolicy is not provided (enforces least-privilege for module calls) */
+  requireSessionPolicy?: boolean;
+  // NOTE: Session tags (sts:TagSession) intentionally NOT supported here.
+  // AWSControlTowerExecution trust policy only allows sts:AssumeRole, not sts:TagSession.
+  // Since CT owns that role, we cannot modify its trust policy. Session policies (Policy param)
+  // work without any trust policy changes — they restrict via intersection, not expansion.
 }): Promise<IAssumeRoleCredential | undefined> {
   if (options.assumeRoleName && options.assumeRoleArn) {
     throw new Error(`Either assumeRoleName or assumeRoleArn can be provided not both`);
@@ -171,58 +193,98 @@ export async function getCredentials(options: {
   const roleArn =
     options.assumeRoleArn ?? `arn:${options.partition}:iam::${options.accountId}:role/${options.assumeRoleName}`;
 
-  const client: STSClient = new STSClient({
-    region: options.region,
-    customUserAgent: options.solutionId,
-    retryStrategy: setRetryStrategy(),
-    credentials: options.credentials,
-  });
+  // Create cache key for credential caching
+  // When session policy is provided, include a policy hash to prevent cross-module credential reuse
+  // (different modules assume the same role but with different session policies)
+  const cacheKey = options.sessionPolicy
+    ? `${options.accountId}-${options.region}-${roleArn}-${hashCode(options.sessionPolicy)}`
+    : `${options.accountId}-${options.region}-${roleArn}`;
 
-  const currentSessionResponse = await executeApi(
-    'GetCallerIdentityCommand',
-    {},
-    () => client.send(new GetCallerIdentityCommand({})),
-    logger,
+  // Use credential cache with atomic in-flight request tracking
+  return await credentialCache.getOrFetch(
+    cacheKey,
+    async () => {
+      // Derive partition from the role ARN (arn:<partition>:...) so the STS
+      // client targets the correct regional endpoint. Isolated and sovereign
+      // partitions (e.g. aws-eusc) reject tokens sent to the commercial endpoint.
+      const partition = options.partition ?? roleArn.split(':')[1];
+      const client: STSClient = new STSClient({
+        region: options.region,
+        endpoint: getStsEndpoint(partition, options.region),
+        customUserAgent: options.solutionId,
+        retryStrategy: setRetryStrategy(),
+        credentials: options.credentials,
+      });
+
+      const currentSessionResponse = await executeApi(
+        'GetCallerIdentityCommand',
+        {},
+        () => client.send(new GetCallerIdentityCommand({})),
+        logger,
+        options.logPrefix,
+      );
+
+      if (currentSessionResponse.Arn === roleArn) {
+        logger.info(`Already in target environment assume role credential not required`, options.logPrefix);
+        return undefined;
+      }
+
+      const commandName = 'AssumeRoleCommand';
+
+      if (options.sessionPolicy) {
+        // Validate policy is well-formed JSON before sending to STS
+        try {
+          JSON.parse(options.sessionPolicy);
+        } catch {
+          throw new Error(`Invalid session policy JSON: ${options.sessionPolicy.substring(0, 100)}...`);
+        }
+        logger.info(`Session policy applied (${options.sessionPolicy.length} chars)`, options.logPrefix);
+      } else if (options.requireSessionPolicy) {
+        throw new Error(
+          `Cross-account AssumeRole to ${roleArn} blocked: no session policy provided. ` +
+            `Module must have a policy declared in module-session-policies.ts to enforce least privilege.`,
+        );
+      }
+
+      const parameters = {
+        RoleArn: roleArn,
+        RoleSessionName: options.sessionName ?? 'AcceleratorAssumeRole',
+        Policy: options.sessionPolicy,
+      };
+
+      const response = await executeApi(
+        commandName,
+        parameters,
+        () => client.send(new AssumeRoleCommand(parameters)),
+        logger,
+        options.logPrefix,
+      );
+
+      //
+      // Validate response
+      if (!response.Credentials) {
+        throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return Credentials`);
+      }
+
+      if (!response.Credentials.AccessKeyId) {
+        throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return AccessKeyId`);
+      }
+      if (!response.Credentials.SecretAccessKey) {
+        throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return SecretAccessKey`);
+      }
+      if (!response.Credentials.SessionToken) {
+        throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return SessionToken`);
+      }
+
+      return {
+        accessKeyId: response.Credentials.AccessKeyId,
+        secretAccessKey: response.Credentials.SecretAccessKey,
+        sessionToken: response.Credentials.SessionToken,
+        expiration: response.Credentials.Expiration,
+      };
+    },
     options.logPrefix,
   );
-
-  if (currentSessionResponse.Arn === roleArn) {
-    logger.info(`Already in target environment assume role credential not required`, options.logPrefix);
-    return undefined;
-  }
-
-  const commandName = 'AssumeRoleCommand';
-  const parameters = { RoleArn: roleArn, RoleSessionName: options.sessionName ?? 'AcceleratorAssumeRole' };
-  const response = await executeApi(
-    commandName,
-    parameters,
-    () => client.send(new AssumeRoleCommand(parameters)),
-    logger,
-    options.logPrefix,
-  );
-
-  //
-  // Validate response
-  if (!response.Credentials) {
-    throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return Credentials`);
-  }
-
-  if (!response.Credentials.AccessKeyId) {
-    throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return AccessKeyId`);
-  }
-  if (!response.Credentials.SecretAccessKey) {
-    throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return SecretAccessKey`);
-  }
-  if (!response.Credentials.SessionToken) {
-    throw new Error(`${MODULE_EXCEPTIONS.SERVICE_EXCEPTION}: AssumeRoleCommand did not return SessionToken`);
-  }
-
-  return {
-    accessKeyId: response.Credentials.AccessKeyId,
-    secretAccessKey: response.Credentials.SecretAccessKey,
-    sessionToken: response.Credentials.SessionToken,
-    expiration: response.Credentials.Expiration,
-  };
 }
 
 /**
@@ -245,9 +307,86 @@ export function getGlobalRegion(partition: string): string {
       return 'us-isof-south-1';
     case 'aws-cn':
       return 'cn-northwest-1';
+    case 'aws-eusc':
+      return 'eusc-de-east-1';
     default:
       return 'us-east-1';
   }
+}
+
+/**
+ * Returns the regional STS endpoint URL for the given partition and region.
+ *
+ * Isolated and sovereign partitions do not use the standard
+ * `sts.<region>.amazonaws.com` endpoint, so credentials minted there are
+ * rejected when sent to the commercial endpoint. This function maps each
+ * partition to its correct STS endpoint host.
+ *
+ * @param partition - AWS partition identifier
+ * @param region - AWS region
+ * @returns Fully qualified STS endpoint URL
+ */
+export function getStsEndpoint(partition: string, region: string): string {
+  switch (partition) {
+    case 'aws-iso':
+      return `https://sts.${region}.c2s.ic.gov`;
+    case 'aws-iso-b':
+      return `https://sts.${region}.sc2s.sgov.gov`;
+    case 'aws-iso-f':
+      return `https://sts.${region}.csp.hci.ic.gov`;
+    case 'aws-iso-e':
+      return `https://sts.${region}.cloud.adc-e.uk`;
+    case 'aws-cn':
+      return `https://sts.${region}.amazonaws.com.cn`;
+    case 'aws-eusc':
+      return `https://sts.${region}.amazonaws.eu`;
+    default:
+      // both commercial and GovCloud use this pattern
+      return `https://sts.${region}.amazonaws.com`;
+  }
+}
+
+/**
+ * Returns the regional S3 virtual-hosted endpoint URL for the given partition,
+ * region, and bucket.
+ *
+ * Isolated and sovereign partitions do not use the standard
+ * `.amazonaws.com` host suffix, so a hardcoded suffix produces an unreachable
+ * URL (for example, CloudFormation `TemplateURL` references fail in those
+ * partitions). This function maps each partition to its correct S3 host suffix.
+ *
+ * @param partition - AWS partition identifier
+ * @param region - AWS region where the bucket exists
+ * @param bucket - S3 bucket name
+ * @returns Fully qualified S3 virtual-hosted endpoint URL (no trailing slash)
+ */
+export function getS3Endpoint(partition: string, region: string, bucket: string): string {
+  let suffix: string;
+  switch (partition) {
+    case 'aws-iso':
+      suffix = 'c2s.ic.gov';
+      break;
+    case 'aws-iso-b':
+      suffix = 'sc2s.sgov.gov';
+      break;
+    case 'aws-iso-f':
+      suffix = 'csp.hci.ic.gov';
+      break;
+    case 'aws-iso-e':
+      suffix = 'cloud.adc-e.uk';
+      break;
+    case 'aws-cn':
+      suffix = 'amazonaws.com.cn';
+      break;
+    case 'aws-eusc':
+      suffix = 'amazonaws.eu';
+      break;
+    default:
+      // both commercial and GovCloud use this pattern
+      suffix = 'amazonaws.com';
+      break;
+  }
+  return `https://${bucket}.s3.${region}.${suffix}`;
 }
 
 /**

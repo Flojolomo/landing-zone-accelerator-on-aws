@@ -256,6 +256,18 @@ exports[`BootstrapStack > Construct(BootstrapStack):  Snapshot Test 1`] = `
               },
               "Resource": "*",
             },
+            {
+              "Action": "kms:DescribeKey",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "cloudformation.amazonaws.com",
+                  "lambda.amazonaws.com",
+                ],
+              },
+              "Resource": "*",
+              "Sid": "Allow CFN and Lambda service principals to describe the key",
+            },
           ],
           "Version": "2012-10-17",
         },
@@ -475,7 +487,7 @@ exports[`BootstrapStack > Construct(BootstrapStack):  Snapshot Test 1`] = `
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-BootstrapStack-111111111111-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },

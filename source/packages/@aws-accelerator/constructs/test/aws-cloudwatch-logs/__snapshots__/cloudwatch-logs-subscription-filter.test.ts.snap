@@ -200,7 +200,7 @@ exports[`CloudWatchLogsSubscriptionFilter > Construct(CloudWatchLogsSubscription
           "Variables": {
             "AWS_STS_REGIONAL_ENDPOINTS": "regional",
             "NO_OP": "false",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -374,6 +374,7 @@ exports[`CloudWatchLogsSubscriptionFilter > Construct(CloudWatchLogsSubscription
                     "kms:Decrypt",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
+                    "kms:DescribeKey",
                   ],
                   "Effect": "Allow",
                   "Resource": [

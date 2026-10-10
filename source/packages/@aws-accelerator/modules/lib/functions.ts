@@ -25,6 +25,7 @@ import { getCredentials, setRetryStrategy } from '../../../@aws-lza/common/funct
 import { AwsCredentialIdentityProvider } from '@aws-sdk/types';
 import {
   Account,
+  AccountState,
   AWSOrganizationsNotInUseException,
   DescribeOrganizationCommand,
   Organization,
@@ -48,6 +49,20 @@ import { fromTemporaryCredentials } from '@aws-sdk/credential-providers';
 
 const logger = createLogger([path.parse(path.basename(__filename)).name]);
 const statusLogger = createStatusLogger([path.parse(path.basename(__filename)).name]);
+
+/**
+ * Resolves the cross-account role name modules use for their operations, using the same precedence
+ * as the CDK deploy path: `cdkOptions.useManagementAccessRole` takes precedence (uses
+ * `managementAccountAccessRole`), then a configured `cdkOptions.customDeploymentRole`, otherwise
+ * `managementAccountAccessRole`. Centralizing this keeps the resolvers in this file in lockstep.
+ * @param globalConfig {@link GlobalConfig}
+ * @returns The resolved cross-account role name
+ */
+export function resolveModuleAccountAccessRole(globalConfig: GlobalConfig): string {
+  return globalConfig.cdkOptions?.useManagementAccessRole
+    ? globalConfig.managementAccountAccessRole
+    : (globalConfig.cdkOptions?.customDeploymentRole ?? globalConfig.managementAccountAccessRole);
+}
 
 /**
  * Module runner command with option to execute the command.
@@ -127,7 +142,13 @@ export function getManagementAccountCredentials(
 }
 
 /**
- * Function to retrieve AWS organizations accounts
+ * Function to retrieve AWS organizations accounts.
+ *
+ * Only accounts whose `State` is `ACTIVE` are returned. Suspended,
+ * pending-closure, and pending-invitation accounts are filtered out so that
+ * downstream modules do not attempt cross-account `AssumeRole` calls into
+ * accounts that cannot accept them.
+ *
  * @param globalRegion string
  * @param solutionId string
  * @param managementAccountCredentials {@link AwsCredentialIdentityProvider}
@@ -144,12 +165,21 @@ export async function getOrganizationAccounts(
     retryStrategy: setRetryStrategy(),
     credentials: managementAccountCredentials,
   });
-  const organizationAccounts: Account[] = [];
+  const allAccounts: Account[] = [];
   const paginator = paginateListAccounts({ client }, {});
   for await (const page of paginator) {
-    organizationAccounts.push(...(page.Accounts ?? []));
+    allAccounts.push(...(page.Accounts ?? []));
   }
-  return organizationAccounts;
+
+  const activeAccounts = allAccounts.filter(account => account.State === AccountState.ACTIVE);
+
+  const skipped = allAccounts.filter(account => account.State !== AccountState.ACTIVE);
+  if (skipped.length > 0) {
+    const summary = skipped.map(account => `${account.Id ?? 'unknown'} (${account.State ?? 'unknown'})`).join(', ');
+    logger.warn(`Skipping ${skipped.length} non-ACTIVE AWS Organizations account(s) from module execution: ${summary}`);
+  }
+
+  return activeAccounts;
 }
 
 /**
@@ -262,6 +292,7 @@ export async function getAcceleratorModuleRunnerParameters(
     organizationAccounts,
     organizationDetails,
     managementAccountCredentials,
+    accountAccessRoleName: resolveModuleAccountAccessRole(acceleratorConfigurations.globalConfig),
   };
 }
 
@@ -326,8 +357,14 @@ export async function getCentralLoggingResources(
     accountsConfig,
   );
 
+  // Select the SSM parameter that holds the central log bucket CMK ARN based on whether the
+  // central log bucket is imported. The logging stack stores the ARN under
+  // `importedCentralLogBucketCmkArn` for ANY imported central log bucket (regardless of
+  // `createAcceleratorManagedKey`) and under `centralLogBucketCmkArn` only for an
+  // accelerator-created bucket. Keying off `createAcceleratorManagedKey` is incorrect and causes
+  // ParameterNotFound (undefined logging bucket) for imported buckets without a managed key.
   let ssmParamName = acceleratorResourceNames.parameters.centralLogBucketCmkArn;
-  if (globalConfig.logging.centralLogBucket?.importedBucket?.createAcceleratorManagedKey) {
+  if (globalConfig.logging.centralLogBucket?.importedBucket?.name) {
     ssmParamName = acceleratorResourceNames.parameters.importedCentralLogBucketCmkArn;
   }
 
@@ -336,7 +373,7 @@ export async function getCentralLoggingResources(
     region: centralizedLoggingRegion,
     solutionId,
     partition,
-    assumeRoleName: globalConfig.cdkOptions.customDeploymentRole ?? globalConfig.managementAccountAccessRole,
+    assumeRoleName: resolveModuleAccountAccessRole(globalConfig),
     credentials: managementAccountCredentials,
   });
 

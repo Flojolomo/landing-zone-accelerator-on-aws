@@ -13,8 +13,10 @@
 import { describe, it, beforeEach, expect, afterAll, beforeAll, test, vi, afterEach } from 'vitest';
 import {
   getNodeVersion,
+  getNodeRuntimeActivationCommand,
   chunkArray,
   getStsEndpoint,
+  getVpcEndpointServicePrefix,
   wildcardMatch,
   getCrossAccountCredentials,
   getCurrentAccountId,
@@ -69,6 +71,36 @@ describe('getStsCredentials', () => {
     });
     const response = await getStsCredentials(new STSClient(), 'role');
     expect(response).toBeDefined();
+  });
+});
+
+describe('getNodeRuntimeActivationCommand', () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...originalEnv };
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  it('activates the configured default major from the pre-baked n version directory', () => {
+    const command = getNodeRuntimeActivationCommand();
+    expect(command).toContain(`/usr/local/n/versions/node/${config.node.version.default}.*/bin`);
+    expect(command).toContain('export PATH="$NODE_BIN:$PATH"');
+    // Must fail loudly rather than silently fall back to the image default version.
+    expect(command).toContain('exit 1');
+  });
+
+  it('honors an explicit major (for example a CloudFormation parameter value)', () => {
+    expect(getNodeRuntimeActivationCommand('20')).toContain('/usr/local/n/versions/node/20.*/bin');
+  });
+
+  it('only uses brace-free shell expansion so it stays safe inside CloudFormation Fn::Sub', () => {
+    // A `${...}` sequence would be interpreted by Fn::Sub when the major is a CFN token.
+    expect(getNodeRuntimeActivationCommand('22')).not.toMatch(/\$\{/);
   });
 });
 
@@ -226,6 +258,28 @@ describe('getStsEndpoint', () => {
   it('should handle empty strings correctly', () => {
     const endpoint = getStsEndpoint('', '');
     expect(endpoint).toBe('https://sts..amazonaws.com');
+  });
+});
+
+describe('getVpcEndpointServicePrefix', () => {
+  it('should return com.amazonaws for aws partition', () => {
+    expect(getVpcEndpointServicePrefix('aws')).toBe('com.amazonaws');
+  });
+
+  it('should return com.amazonaws for aws-us-gov partition', () => {
+    expect(getVpcEndpointServicePrefix('aws-us-gov')).toBe('com.amazonaws');
+  });
+
+  it('should return cn.com.amazonaws for aws-cn partition', () => {
+    expect(getVpcEndpointServicePrefix('aws-cn')).toBe('cn.com.amazonaws');
+  });
+
+  it('should return eu.amazonaws for aws-eusc partition', () => {
+    expect(getVpcEndpointServicePrefix('aws-eusc')).toBe('eu.amazonaws');
+  });
+
+  it('should return com.amazonaws for unknown partitions', () => {
+    expect(getVpcEndpointServicePrefix('unknown')).toBe('com.amazonaws');
   });
 });
 

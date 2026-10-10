@@ -16,7 +16,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -152,7 +152,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/AWSServiceRoleForAWSCloud9/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AWSServiceRoleForAWSCloud9CreateServiceLinkedRoleFunction78452922",
@@ -440,7 +440,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "Accelerator deployed CloudWatchDataProtection custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -600,7 +600,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/AcceleratorCloudWatchDataProtection/CloudWatchDataProtection/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AcceleratorCloudWatchDataProtectionFunctionAB6284FB",
@@ -791,6 +791,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEqualsIfExists": {
@@ -1264,6 +1265,26 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               "Resource": "*",
             },
             {
+              "Action": "kms:DescribeKey",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::111111111111:root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+              "Sid": "Allow management account to describe key",
+            },
+            {
               "Action": [
                 "kms:Encrypt",
                 "kms:Decrypt",
@@ -1557,6 +1578,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -1574,6 +1596,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -1591,6 +1614,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEqualsIfExists": {
@@ -1608,6 +1632,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -1897,7 +1922,10 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
@@ -1907,7 +1935,11 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Ref": "AcceleratorImportedCentralLogBucketKeyLookupCDD7B719",
@@ -2090,7 +2122,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -2226,7 +2258,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/AutoScalingServiceLinkedRole/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AutoScalingServiceLinkedRoleCreateServiceLinkedRoleFunction56E83FD3",
@@ -2511,7 +2543,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -2606,7 +2638,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -2697,7 +2729,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -2816,7 +2848,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
           "Variables": {
             "AWS_STS_REGIONAL_ENDPOINTS": "regional",
             "NO_OP": "false",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -2962,6 +2994,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
                     "kms:Decrypt",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
+                    "kms:DescribeKey",
                   ],
                   "Effect": "Allow",
                   "Resource": [
@@ -3078,6 +3111,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -3123,7 +3157,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
                 "Arn",
               ],
             },
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "FunctionName": "AWSAccelerator-FirehoseRecordsProcessor",
@@ -3208,6 +3242,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
             {
               "Action": [
                 "kms:Decrypt",
+                "kms:DescribeKey",
                 "kms:Encrypt",
                 "kms:GenerateDataKey",
                 "kms:ReEncryptTo",
@@ -3268,6 +3303,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:GenerateDataKey",
                   ],
                   "Condition": {
@@ -3563,7 +3599,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "Accelerator deployed BucketPolicy custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -3706,7 +3742,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/ImportedaccessLogsBucketPolicy/BucketPolicy/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ImportedaccessLogsBucketPolicyFunctionE108A801",
@@ -3865,7 +3901,6 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
           "REPLACED-JSON-PATH.json",
         ],
         "bucketType": "elb-logs",
-        "elbAccountId": "127311923021",
         "organizationId": "o-asdf123456",
         "principalOrgIdCondition": {
           "aws:PrincipalOrgID": "o-asdf123456",
@@ -3889,7 +3924,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "Accelerator deployed BucketPolicy custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -4032,7 +4067,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/ImportedelbLogsBucketPolicy/BucketPolicy/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ImportedelbLogsBucketPolicyFunction0F7A82C4",
@@ -4234,6 +4269,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -4687,7 +4723,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
               ],
             },
             "LogSubscriptionType": "ACCOUNT",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -5018,7 +5054,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-LoggingStack-333333333333-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -5088,7 +5124,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "Accelerator deployed ValidateBucket custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -5253,7 +5289,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/ValidateImportedaccessLogsBucket/ValidateBucket/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ValidateImportedaccessLogsBucketValidateBucketFunction67AF64AE",
@@ -5395,7 +5431,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "Accelerator deployed ValidateBucket custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -5560,7 +5596,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 1`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/ValidateImportedelbLogsBucket/ValidateBucket/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ValidateImportedelbLogsBucketValidateBucketFunction9D3CDC99",
@@ -5709,7 +5745,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -5833,7 +5869,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/AWSServiceRoleForAWSCloud9/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AWSServiceRoleForAWSCloud9CreateServiceLinkedRoleFunction78452922",
@@ -6208,6 +6244,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -6225,6 +6262,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -6242,6 +6280,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEqualsIfExists": {
@@ -6259,6 +6298,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -6551,7 +6591,11 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
@@ -6728,7 +6772,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -6852,7 +6896,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/AutoScalingServiceLinkedRole/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AutoScalingServiceLinkedRoleCreateServiceLinkedRoleFunction56E83FD3",
@@ -7012,7 +7056,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -7102,7 +7146,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Custom resource provider to put cross-account ssm parameter value",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -7218,7 +7262,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
           "Variables": {
             "AWS_STS_REGIONAL_ENDPOINTS": "regional",
             "NO_OP": "false",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -7452,6 +7496,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -7497,7 +7542,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
                 "Arn",
               ],
             },
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "FunctionName": "AWSAccelerator-FirehoseRecordsProcessor",
@@ -7576,6 +7621,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
             {
               "Action": [
                 "kms:Decrypt",
+                "kms:DescribeKey",
                 "kms:Encrypt",
                 "kms:GenerateDataKey",
                 "kms:ReEncryptTo",
@@ -7636,6 +7682,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:GenerateDataKey",
                   ],
                   "Condition": {
@@ -7888,7 +7935,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed S3CreateBucketPrefix custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -8033,7 +8080,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ImportedLogBucketPrefix/S3CreateBucketPrefix/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ImportedLogBucketPrefixS3CreateBucketPrefixFunction72196444",
@@ -8211,7 +8258,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed BucketPolicy custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -8342,7 +8389,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ImportedaccessLogsBucketPolicy/BucketPolicy/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ImportedaccessLogsBucketPolicyFunctionE108A801",
@@ -8507,7 +8554,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed BucketEncryption custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -8638,7 +8685,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ImportedcentralLogsBucketEncryption/BucketEncryption/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ImportedcentralLogsBucketEncryptionFunction1213293C",
@@ -9074,7 +9121,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed BucketPolicy custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -9205,7 +9252,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ImportedcentralLogsBucketPolicy/BucketPolicy/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ImportedcentralLogsBucketPolicyFunction52BB88BE",
@@ -9364,7 +9411,6 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
           "REPLACED-JSON-PATH.json",
         ],
         "bucketType": "elb-logs",
-        "elbAccountId": "797873946194",
         "organizationId": "o-asdf123456",
         "principalOrgIdCondition": {
           "aws:PrincipalOrgID": "o-asdf123456",
@@ -9388,7 +9434,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed BucketPolicy custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -9519,7 +9565,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ImportedelbLogsBucketPolicy/BucketPolicy/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ImportedelbLogsBucketPolicyFunction0F7A82C4",
@@ -9721,6 +9767,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -10162,7 +10209,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
               ],
             },
             "LogSubscriptionType": "ACCOUNT",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -10484,7 +10531,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-LoggingStack-333333333333-us-west-2/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -10554,7 +10601,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed ValidateBucket custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -10707,7 +10754,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ValidateImportedaccessLogsBucket/ValidateBucket/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ValidateImportedaccessLogsBucketValidateBucketFunction67AF64AE",
@@ -10849,7 +10896,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed ValidateBucket custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -11002,7 +11049,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ValidateImportedcentralLogsBucket/ValidateBucket/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ValidateImportedcentralLogsBucketValidateBucketFunctionA46C1293",
@@ -11144,7 +11191,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "Accelerator deployed ValidateBucket custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -11297,7 +11344,7 @@ exports[`LoggingStack > Construct(LoggingStack):  Snapshot Test 2`] = `
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/ValidateImportedelbLogsBucket/ValidateBucket/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "ValidateImportedelbLogsBucketValidateBucketFunction9D3CDC99",
@@ -11446,7 +11493,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -11582,7 +11629,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/AWSServiceRoleForAWSCloud9/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AWSServiceRoleForAWSCloud9CreateServiceLinkedRoleFunction78452922",
@@ -11891,6 +11938,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEqualsIfExists": {
@@ -12110,6 +12158,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -12127,6 +12176,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -12144,6 +12194,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEqualsIfExists": {
@@ -12161,6 +12212,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -12445,7 +12497,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -12581,7 +12633,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/AutoScalingServiceLinkedRole/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AutoScalingServiceLinkedRoleCreateServiceLinkedRoleFunction56E83FD3",
@@ -12768,20 +12820,6 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
           "IgnorePublicAcls": true,
           "RestrictPublicBuckets": true,
         },
-        "Tags": [
-          {
-            "Key": "aws-cdk:auto-auditmanager-access-bucket",
-            "Value": "true",
-          },
-          {
-            "Key": "aws-cdk:auto-guardduty-access-bucket",
-            "Value": "true",
-          },
-          {
-            "Key": "aws-cdk:auto-macie-access-bucket",
-            "Value": "true",
-          },
-        ],
         "VersioningConfiguration": {
           "Status": "Enabled",
         },
@@ -12824,48 +12862,6 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                     ],
                   ],
                 },
-              },
-              "Resource": "*",
-            },
-            {
-              "Action": [
-                "kms:Decrypt",
-                "kms:DescribeKey",
-                "kms:Encrypt",
-                "kms:ReEncrypt*",
-                "kms:GenerateDataKey*",
-              ],
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "macie.amazonaws.com",
-              },
-              "Resource": "*",
-            },
-            {
-              "Action": [
-                "kms:Decrypt",
-                "kms:DescribeKey",
-                "kms:Encrypt",
-                "kms:ReEncrypt*",
-                "kms:GenerateDataKey*",
-              ],
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "guardduty.amazonaws.com",
-              },
-              "Resource": "*",
-            },
-            {
-              "Action": [
-                "kms:Decrypt",
-                "kms:DescribeKey",
-                "kms:Encrypt",
-                "kms:ReEncrypt*",
-                "kms:GenerateDataKey*",
-              ],
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "auditmanager.amazonaws.com",
               },
               "Resource": "*",
             },
@@ -13165,129 +13161,10 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               "Sid": "deny-insecure-connections",
             },
             {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "macie.amazonaws.com",
-              },
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "CentralLogsBucket447B5C59",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "CentralLogsBucket447B5C59",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "guardduty.amazonaws.com",
-              },
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "CentralLogsBucket447B5C59",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "CentralLogsBucket447B5C59",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
-              "Action": [
-                "s3:GetObject*",
-                "s3:GetBucket*",
-                "s3:List*",
-                "s3:DeleteObject*",
-                "s3:PutObject",
-                "s3:PutObjectLegalHold",
-                "s3:PutObjectRetention",
-                "s3:PutObjectTagging",
-                "s3:PutObjectVersionTagging",
-                "s3:Abort*",
-              ],
-              "Effect": "Allow",
-              "Principal": {
-                "Service": "auditmanager.amazonaws.com",
-              },
-              "Resource": [
-                {
-                  "Fn::GetAtt": [
-                    "CentralLogsBucket447B5C59",
-                    "Arn",
-                  ],
-                },
-                {
-                  "Fn::Join": [
-                    "",
-                    [
-                      {
-                        "Fn::GetAtt": [
-                          "CentralLogsBucket447B5C59",
-                          "Arn",
-                        ],
-                      },
-                      "/*",
-                    ],
-                  ],
-                },
-              ],
-            },
-            {
               "Action": "s3:PutObject",
               "Condition": {
                 "StringEquals": {
+                  "aws:SourceOrgID": "o-asdf123456",
                   "s3:x-amz-acl": "bucket-owner-full-control",
                 },
               },
@@ -13320,6 +13197,11 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                 "s3:GetBucketAcl",
                 "s3:ListBucket",
               ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceOrgID": "o-asdf123456",
+                },
+              },
               "Effect": "Allow",
               "Principal": {
                 "Service": [
@@ -13334,6 +13216,144 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                   "Arn",
                 ],
               },
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+                "s3:DeleteObject*",
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceOrgID": "o-asdf123456",
+                },
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "macie.amazonaws.com",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "CentralLogsBucket447B5C59",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "CentralLogsBucket447B5C59",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+              "Sid": "Allow Macie service access",
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+                "s3:DeleteObject*",
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceOrgID": "o-asdf123456",
+                },
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "guardduty.amazonaws.com",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "CentralLogsBucket447B5C59",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "CentralLogsBucket447B5C59",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+              "Sid": "Allow Guardduty service access",
+            },
+            {
+              "Action": [
+                "s3:GetObject*",
+                "s3:GetBucket*",
+                "s3:List*",
+                "s3:PutObject",
+                "s3:PutObjectLegalHold",
+                "s3:PutObjectRetention",
+                "s3:PutObjectTagging",
+                "s3:PutObjectVersionTagging",
+                "s3:Abort*",
+                "s3:DeleteObject*",
+              ],
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceOrgID": "o-asdf123456",
+                },
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "auditmanager.amazonaws.com",
+              },
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "CentralLogsBucket447B5C59",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "CentralLogsBucket447B5C59",
+                          "Arn",
+                        ],
+                      },
+                      "/*",
+                    ],
+                  ],
+                },
+              ],
+              "Sid": "Allow AuditManager service access",
             },
             {
               "Action": [
@@ -13569,7 +13589,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
         "Description": "Accelerator deployed S3CreateBucketPrefix custom resource lambda function.",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -13734,7 +13754,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-west-2/CentralLogsBucket/Resource/ResourcePrefix/S3CreateBucketPrefix/Resource)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "CentralLogsBucketResourcePrefixS3CreateBucketPrefixFunction67F48788",
@@ -13887,7 +13907,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -13984,7 +14004,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
           "Variables": {
             "AWS_STS_REGIONAL_ENDPOINTS": "regional",
             "NO_OP": "false",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -14130,6 +14150,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                     "kms:Decrypt",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
+                    "kms:DescribeKey",
                   ],
                   "Effect": "Allow",
                   "Resource": [
@@ -14336,7 +14357,11 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Fn::GetAtt": [
@@ -14492,18 +14517,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               "Action": "s3:PutObject",
               "Effect": "Allow",
               "Principal": {
-                "AWS": {
-                  "Fn::Join": [
-                    "",
-                    [
-                      "arn:",
-                      {
-                        "Ref": "AWS::Partition",
-                      },
-                      ":iam::797873946194:root",
-                    ],
-                  ],
-                },
+                "Service": "logdelivery.elasticloadbalancing.amazonaws.com",
               },
               "Resource": {
                 "Fn::Join": [
@@ -14750,6 +14764,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -14809,7 +14824,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                 "Arn",
               ],
             },
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "FunctionName": "AWSAccelerator-FirehoseRecordsProcessor",
@@ -14926,6 +14941,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
             {
               "Action": [
                 "kms:Decrypt",
+                "kms:DescribeKey",
                 "kms:Encrypt",
                 "kms:GenerateDataKey",
                 "kms:ReEncryptTo",
@@ -15002,6 +15018,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:GenerateDataKey",
                   ],
                   "Condition": {
@@ -15342,6 +15359,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -15792,7 +15810,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
               ],
             },
             "LogSubscriptionType": "LOG_GROUP",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -16102,7 +16120,7 @@ exports[`LoggingStackDelegatedAdmin > Construct(LoggingStacKDelegatedAdmin):  Sn
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-LoggingStack-333333333333-us-west-2/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -16179,7 +16197,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -16315,7 +16333,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/AWSServiceRoleForAWSCloud9/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AWSServiceRoleForAWSCloud9CreateServiceLinkedRoleFunction78452922",
@@ -16658,6 +16676,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEqualsIfExists": {
@@ -17011,6 +17030,26 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               "Resource": "*",
             },
             {
+              "Action": "kms:DescribeKey",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::111111111111:root",
+                    ],
+                  ],
+                },
+              },
+              "Resource": "*",
+              "Sid": "Allow management account to describe key",
+            },
+            {
               "Action": [
                 "kms:Encrypt",
                 "kms:Decrypt",
@@ -17304,6 +17343,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -17321,6 +17361,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -17338,6 +17379,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEqualsIfExists": {
@@ -17355,6 +17397,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               "Action": [
                 "kms:GenerateDataKey",
                 "kms:Decrypt",
+                "kms:DescribeKey",
               ],
               "Condition": {
                 "StringEquals": {
@@ -17639,7 +17682,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
         "Description": "Custom resource provider to create service linked role",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -17775,7 +17818,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
         "Description": "AWS CDK resource provider framework - onEvent (AWSAccelerator-LoggingStack-333333333333-us-east-1/AutoScalingServiceLinkedRole/CreateServiceLinkedRoleProvider)",
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
             "USER_ON_EVENT_FUNCTION_ARN": {
               "Fn::GetAtt": [
                 "AutoScalingServiceLinkedRoleCreateServiceLinkedRoleFunction56E83FD3",
@@ -18060,7 +18103,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -18155,7 +18198,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -18246,7 +18289,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -18365,7 +18408,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
           "Variables": {
             "AWS_STS_REGIONAL_ENDPOINTS": "regional",
             "NO_OP": "false",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -18511,6 +18554,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
                     "kms:Decrypt",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
+                    "kms:DescribeKey",
                   ],
                   "Effect": "Allow",
                   "Resource": [
@@ -18669,7 +18713,11 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               },
             },
             {
-              "Action": "kms:Encrypt",
+              "Action": [
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Ref": "AcceleratorCentralLogBucketKeyLookup26F8C418",
@@ -18789,18 +18837,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               "Action": "s3:PutObject",
               "Effect": "Allow",
               "Principal": {
-                "AWS": {
-                  "Fn::Join": [
-                    "",
-                    [
-                      "arn:",
-                      {
-                        "Ref": "AWS::Partition",
-                      },
-                      ":iam::127311923021:root",
-                    ],
-                  ],
-                },
+                "Service": "logdelivery.elasticloadbalancing.amazonaws.com",
               },
               "Resource": {
                 "Fn::Join": [
@@ -18999,6 +19036,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -19044,7 +19082,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
                 "Arn",
               ],
             },
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "FunctionName": "AWSAccelerator-FirehoseRecordsProcessor",
@@ -19129,6 +19167,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
             {
               "Action": [
                 "kms:Decrypt",
+                "kms:DescribeKey",
                 "kms:Encrypt",
                 "kms:GenerateDataKey",
                 "kms:ReEncryptTo",
@@ -19189,6 +19228,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:GenerateDataKey",
                   ],
                   "Condition": {
@@ -19507,6 +19547,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
                 {
                   "Action": [
                     "kms:Decrypt",
+                    "kms:DescribeKey",
                     "kms:Encrypt",
                     "kms:GenerateDataKey",
                     "kms:ReEncryptTo",
@@ -19956,7 +19997,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
               ],
             },
             "LogSubscriptionType": "LOG_GROUP",
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -20287,7 +20328,7 @@ exports[`LoggingStackOuTargets > Construct(LoggingStackOuTargets):  Snapshot Tes
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-LoggingStack-333333333333-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },

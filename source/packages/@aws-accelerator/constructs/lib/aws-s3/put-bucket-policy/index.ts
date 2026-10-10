@@ -49,7 +49,6 @@ export async function handler(event: CloudFormationCustomResourceEvent): Promise
   const principalOrgIdCondition: PrincipalOrgIdConditionType | undefined =
     event.ResourceProperties['principalOrgIdCondition'];
 
-  const elbAccountId: string | undefined = event.ResourceProperties['elbAccountId'];
   const firewallRoles: string[] = event.ResourceProperties['firewallRoles'] ?? [];
 
   const solutionId = process.env['SOLUTION_ID'];
@@ -72,7 +71,6 @@ export async function handler(event: CloudFormationCustomResourceEvent): Promise
           bucketPolicyFilePaths,
           principalOrgIdCondition,
           awsPrincipalAccesses,
-          elbAccountId,
         );
 
         let replacedPolicyString = generatedPolicyString;
@@ -108,7 +106,6 @@ export function generateBucketPolicy(
   bucketPolicyFilePaths: string[],
   principalOrgIdCondition?: PrincipalOrgIdConditionType,
   awsPrincipalAccesses?: AwsPrincipalAccessesType[],
-  elbAccountId?: string,
 ): string {
   const policyStatements: PolicyStatementType[] = [];
 
@@ -151,6 +148,8 @@ export function generateBucketPolicy(
 
         break;
       case AcceleratorImportedBucketType.CENTRAL_LOGS_BUCKET:
+        const sourceOrgId = principalOrgIdCondition?.['aws:PrincipalOrgID'];
+
         policyStatements.push({
           Sid: 'deny-insecure-connections',
           Effect: 'Deny',
@@ -181,6 +180,7 @@ export function generateBucketPolicy(
           Condition: {
             StringEquals: {
               's3:x-amz-acl': 'bucket-owner-full-control',
+              ...(sourceOrgId ? { 'aws:SourceOrgID': sourceOrgId } : {}),
             },
           },
         });
@@ -192,6 +192,15 @@ export function generateBucketPolicy(
           },
           Action: ['s3:GetBucketAcl', 's3:ListBucket'],
           Resource: [bucketArn],
+          ...(sourceOrgId
+            ? {
+                Condition: {
+                  StringEquals: {
+                    'aws:SourceOrgID': sourceOrgId,
+                  },
+                },
+              }
+            : {}),
         });
 
         policyStatements.push({
@@ -282,20 +291,23 @@ export function generateBucketPolicy(
                 Service: [item.principal],
               },
               Resource: [bucketArn, `${bucketArn}/*`],
+              ...(sourceOrgId
+                ? {
+                    Condition: {
+                      StringEquals: {
+                        'aws:SourceOrgID': sourceOrgId,
+                      },
+                    },
+                  }
+                : {}),
             });
           }
         });
         break;
       case AcceleratorImportedBucketType.ELB_LOGS_BUCKET:
-        let elbPrincipal: PrincipalOrgIdConditionType = {
+        const elbPrincipal: PrincipalOrgIdConditionType = {
           Service: ['logdelivery.elasticloadbalancing.amazonaws.com'],
         };
-
-        if (elbAccountId) {
-          elbPrincipal = {
-            AWS: [`arn:${partition}:iam::${elbAccountId}:root`],
-          };
-        }
 
         policyStatements.push({
           Sid: 'Allow get acl access for SSM principal',

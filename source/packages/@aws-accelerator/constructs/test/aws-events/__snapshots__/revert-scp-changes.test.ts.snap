@@ -240,7 +240,7 @@ exports[`RevertScpChanges > Construct(RevertScpChanges):  Snapshot Test 1`] = `
                 ],
               ],
             },
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -350,6 +350,7 @@ exports[`RevertScpChanges > Construct(RevertScpChanges):  Snapshot Test 1`] = `
               "Action": [
                 "kms:Encrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "*",
@@ -499,7 +500,7 @@ exports[`RevertScpChanges > Construct(RevertScpChanges):  Snapshot Test 1`] = `
                 ],
               ],
             },
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "index.handler",
@@ -609,6 +610,7 @@ exports[`RevertScpChanges > Construct(RevertScpChanges):  Snapshot Test 1`] = `
               "Action": [
                 "kms:Encrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "*",

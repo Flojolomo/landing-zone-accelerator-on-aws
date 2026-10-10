@@ -528,7 +528,8 @@ describe('accounts-config', () => {
           {
             Email: TEST_EMAILS.MANAGEMENT,
             Id: TEST_ACCOUNT_IDS.MANAGEMENT,
-            Status: 'ACTIVE',
+            State: 'ACTIVE',
+            Status: 'SUSPENDED',
             Name: 'Management',
           },
           {
@@ -548,12 +549,45 @@ describe('accounts-config', () => {
 
         expect(mockOrganizationsClient.send).toHaveBeenCalledTimes(1);
         expect(config.accountIds).toHaveLength(2);
+        expect(config.accountIds?.map(account => account.status)).toEqual(['ACTIVE', 'ACTIVE']);
         expect(config.accountIds![0]).toEqual({
           email: TEST_EMAILS.MANAGEMENT,
           accountId: TEST_ACCOUNT_IDS.MANAGEMENT,
           status: 'ACTIVE',
           orgsApiResponse: mockAccounts[0],
         });
+      });
+
+      it('should exclude PENDING_ACTIVATION accounts from account IDs when State overrides ACTIVE Status', async () => {
+        const config = createAccountsConfig();
+
+        const mockAccounts = [
+          {
+            Email: TEST_EMAILS.MANAGEMENT,
+            Id: TEST_ACCOUNT_IDS.MANAGEMENT,
+            State: 'PENDING_ACTIVATION',
+            Status: 'ACTIVE',
+            Name: 'Management',
+          },
+          {
+            Email: TEST_EMAILS.LOG_ARCHIVE,
+            Id: TEST_ACCOUNT_IDS.LOG_ARCHIVE,
+            State: 'ACTIVE',
+            Status: 'ACTIVE',
+            Name: 'LogArchive',
+          },
+        ];
+
+        mockOrganizationsClient.send.mockResolvedValue({
+          Accounts: mockAccounts,
+          NextToken: undefined,
+        });
+
+        await config.loadAccountIds('aws', false, true, config, undefined, false);
+
+        expect(config.accountIds).toHaveLength(2);
+        expect(config.accountIds?.map(account => account.status)).toEqual(['PENDING_ACTIVATION', 'ACTIVE']);
+        expect(config.getAccountIds()).toEqual([TEST_ACCOUNT_IDS.LOG_ARCHIVE]);
       });
 
       it('should handle organizations enabled with API loading - multiple pages', async () => {
@@ -843,6 +877,7 @@ describe('accounts-config', () => {
         expect(STSClient).toHaveBeenCalledWith(
           expect.objectContaining({
             customUserAgent: 'test-solution-123',
+            region: TEST_ENV_VALUES.REGION,
           }),
         );
       });
@@ -861,7 +896,7 @@ describe('accounts-config', () => {
 
         expect(STSClient).toHaveBeenCalledWith(
           expect.objectContaining({
-            customUserAgent: '',
+            region: TEST_ENV_VALUES.REGION,
           }),
         );
       });
@@ -1348,10 +1383,10 @@ describe('accounts-config', () => {
 
         await config.loadAccountIds('aws', true, false, config);
 
+        // When region and customUserAgent are empty strings, buildConfig omits them
         expect(STSClient).toHaveBeenCalledWith(
           expect.objectContaining({
-            region: '',
-            customUserAgent: '',
+            retryStrategy: expect.anything(),
           }),
         );
       });

@@ -14,6 +14,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { ISecurityGroup } from './vpc';
+import { getVpcEndpointServicePrefix } from '@aws-accelerator/utils';
 
 export interface IVpcEndpoint extends cdk.IResource {
   readonly vpcEndpointId: string;
@@ -42,6 +43,7 @@ export interface VpcEndpointProps {
   readonly routeTables?: string[];
   readonly partition?: string;
   readonly serviceName?: string;
+  readonly name?: string;
 }
 
 abstract class VpcEndpointBase extends cdk.Resource implements IVpcEndpoint {
@@ -98,19 +100,18 @@ export class VpcEndpoint extends VpcEndpointBase {
     const sagemakerArray = ['notebook', 'studio'];
 
     if (props.vpcEndpointType === VpcEndpointType.INTERFACE) {
-      let serviceName = `com.amazonaws.${cdk.Stack.of(this).region}.${props.service}`;
+      const servicePrefix = getVpcEndpointServicePrefix(props.partition ?? cdk.Stack.of(this).partition);
+      let serviceName = `${servicePrefix}.${cdk.Stack.of(this).region}.${props.service}`;
       if (sagemakerArray.includes(this.service)) {
         serviceName = `aws.sagemaker.${cdk.Stack.of(this).region}.${props.service}`;
       }
       if (this.service === 's3-global.accesspoint') {
-        serviceName = `com.amazonaws.${props.service}`;
+        serviceName = `${servicePrefix}.${props.service}`;
       }
       if (this.service === 'iam') {
-        serviceName = `com.amazonaws.${props.service}`;
+        serviceName = `${servicePrefix}.${props.service}`;
       }
-      // Add the ability against China region to override serviceName due to the prefix of
-      // serviceName is inconsistent (com.amazonaws vs cn.com.amazonaws) for VPC interface
-      // endpoints in that region.
+      // Allow explicit serviceName override for non-standard service name patterns
       if (props.serviceName) {
         serviceName = props.serviceName;
       }
@@ -122,6 +123,7 @@ export class VpcEndpoint extends VpcEndpointBase {
         securityGroupIds: props.securityGroups?.map(item => item.securityGroupId),
         privateDnsEnabled: props.privateDnsEnabled,
         policyDocument: props.policyDocument,
+        ...(props.name ? { tags: [{ key: 'Name', value: props.name }] } : {}),
       });
       this.vpcEndpointId = resource.ref;
 
@@ -143,11 +145,12 @@ export class VpcEndpoint extends VpcEndpointBase {
         vpcId: this.vpcId,
         routeTableIds: props.routeTables,
         policyDocument: props.policyDocument,
+        ...(props.name ? { tags: [{ key: 'Name', value: props.name }] } : {}),
       });
       this.vpcEndpointId = resource.ref;
       return;
     } else {
-      const servicePrefix = props.partition === 'aws-cn' ? 'cn.com.amazonaws' : 'com.amazonaws';
+      const servicePrefix = getVpcEndpointServicePrefix(props.partition ?? cdk.Stack.of(this).partition);
       const serviceName = `${servicePrefix}.vpce.${cdk.Stack.of(this).region}.${props.service}`;
 
       const resource = new cdk.aws_ec2.CfnVPCEndpoint(this, 'Resource', {
@@ -155,6 +158,7 @@ export class VpcEndpoint extends VpcEndpointBase {
         vpcEndpointType: props.vpcEndpointType,
         vpcId: this.vpcId,
         subnetIds: props.subnets,
+        ...(props.name ? { tags: [{ key: 'Name', value: props.name }] } : {}),
       });
       this.vpcEndpointId = resource.ref;
       return;

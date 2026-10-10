@@ -304,7 +304,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 1`] = `
                 "Configuration": {
                   "PollForSourceChanges": false,
                   "S3Bucket": "test-bucket",
-                  "S3ObjectKey": "lza/v1.15.5.zip",
+                  "S3ObjectKey": "lza/v1.16.3.zip",
                 },
                 "Name": "Source",
                 "OutputArtifacts": [
@@ -1897,6 +1897,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 1`] = `
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "REPLACED-UUID",
@@ -1989,7 +1990,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 1`] = `
                       {
                         "Ref": "AWS::Partition",
                       },
-                      ":s3:::test-bucket/lza/v1.15.5.zip",
+                      ":s3:::test-bucket/lza/v1.16.3.zip",
                     ],
                   ],
                 },
@@ -2386,6 +2387,16 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 1`] = `
               "Type": "PLAINTEXT",
               "Value": "true",
             },
+            {
+              "Name": "VERBOSE_LOG_GROUP_NAME",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator-Module-Verbose-Logs",
+            },
+            {
+              "Name": "MODULE_RESOURCE_PREFIX",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator",
+            },
           ],
           "Image": "aws/codebuild/standard:7.0",
           "ImagePullCredentialsType": "CODEBUILD",
@@ -2407,10 +2418,12 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 1`] = `
                 "version: 0.2
 phases:
   install:
-    runtime-versions:
-      nodejs: 22
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
+      - node -v
+      - ulimit -n 65535
       - "export WORK_DIR=$CODEBUILD_SRC_DIR/source/packages/@aws-accelerator/accelerator
 
         \\               export ARCHIVE_NAME=\\"\${ACCELERATOR_STAGE}.tgz\\"
@@ -2425,7 +2438,14 @@ phases:
       - env
       - '"\${WORK_DIR}/scripts/prepare-stage.sh"'
       - cd $WORK_DIR;
-      - RUNNER_ARGS="--partition ",
+      - echo "=========================================="
+      - echo "Verbose logs are being sent to CloudWatch Logs"
+      - 'echo "Log Group: aws-accelerator-Module-Verbose-Logs"'
+      - 'echo "Log Stream: $ACCELERATOR_STAGE/<timestamp>-000000000000"'
+      - echo "For detailed troubleshooting, view logs in CloudWatch Logs console"
+      - echo "=========================================="
+      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+      - yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -2433,17 +2453,20 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                " --config-dir $CODEBUILD_SRC_DIR_Config --stage $ACCELERATOR_STAGE --prefix AWSAccelerator"
-      - if false; then RUNNER_ARGS="$RUNNER_ARGS --use-existing-roles"; fi
-      - set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS;
-      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+                " --stage $ACCELERATOR_STAGE --accelerator-prefix $ACCELERATOR_PREFIX --verbose
       - |-
         if [ "\${ACCELERATOR_STAGE}" = "pre-approval" ]; then
+                        cd $WORK_DIR;
                         mkdir rawDiff;
                         cd rawDiff;
                         aws s3 sync "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/" .;
-                        for file in ./*.tgz; do tar -xf "$file" -C .; done;
-                        for file in ./*.diff; do cat "$file"; done;
+                        for file in ./*.tgz; do if command -v pigz &>/dev/null; then pigz -dc "$file" | tar xf - -C .; else tar -xf "$file" -C .; fi; done;
+                        for file in ./*.diff; do cat "$file"; echo; done;
+                        for file in ./*.module.diff; do cat "$file"; done;
+                        cd $WORK_DIR;
+                        yarn run ts-node --cwdMode --transpile-only generate-diff-viewer-cli.ts rawDiff diff-viewer.html;
+                        aws s3 cp diff-viewer.html "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html";
+                        echo "Download with: aws s3 cp \${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html ./diff-viewer.html";
                       fi
       - export FULL_SYNTH="true"
       - if [ $ASEA_MAPPING_BUCKET ]; then aws s3api head-object --bucket $ASEA_MAPPING_BUCKET --key $ASEA_MAPPING_FILE >/dev/null 2>&1 || export FULL_SYNTH="false"; fi;
@@ -2470,22 +2493,20 @@ phases:
                 ";
                           fi
                           if [ $FULL_SYNTH = "true" ]; then
-                            set -e && tar -czf cf_$ARCHIVE_NAME -C cdk.out .;
+                            set -e && if command -v pigz &>/dev/null; then tar cf - -C cdk.out . | pigz > cf_$ARCHIVE_NAME; else tar -czf cf_$ARCHIVE_NAME -C cdk.out .; fi;
                           else
                             touch full-synth-false.txt;
                           fi
                           if [ "\${ACCELERATOR_ENABLE_APPROVAL_STAGE}" = "Yes" ] && [ "$ACCELERATOR_STAGE" != "bootstrap" ]; then
-                            tar -czf diff_cdk_out_$ARCHIVE_NAME -C cdk.out .
-                            find cdk.out -type f -name "*.diff" -print0 | tar --transform='s|.*/||' -czf diff_$ARCHIVE_NAME --null -T -
-                            aws s3 cp diff_$ARCHIVE_NAME $DIFFS_DIR/$CODEPIPELINE_EXECUTION_ID/
-                          fi
-                       else
-                        eval ARTIFACTS='$'CODEBUILD_SRC_DIR_$STAGE_ARTIFACT
-                        if [ -f "\${ARTIFACTS}/cf_\${ARCHIVE_NAME}" ]; then
-                             mkdir -p cdk.out
-                             tar -xzf $ARTIFACTS/cf_$ARCHIVE_NAME -C cdk.out;
-                         else
-                            set -e && yarn run ts-node --transpile-only cdk.ts synth --stage $ACCELERATOR_STAGE --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                            CDK_OPTIONS=deploy yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                " --region ",
+                {
+                  "Ref": "AWS::Region",
+                },
+                "REPLACED-JSON-PATH.json",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -2498,11 +2519,13 @@ phases:
                 ";
                         fi
                        fi
+  post_build:
+    commands:
+      - '"$WORK_DIR/scripts/collect-diagnostics.sh"'
 artifacts:
   base-directory: $WORK_DIR
   files:
     - cf_$ARCHIVE_NAME
-    - diff_cdk_out_$ARCHIVE_NAME
     - full-synth-false.txt
 ",
               ],
@@ -2518,7 +2541,7 @@ artifacts:
       "Properties": {
         "Name": "/accelerator/PipelineStack/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -2840,7 +2863,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 2`] = `
                 "Configuration": {
                   "PollForSourceChanges": false,
                   "S3Bucket": "test-bucket",
-                  "S3ObjectKey": "lza/v1.15.5.zip",
+                  "S3ObjectKey": "lza/v1.16.3.zip",
                 },
                 "Name": "Source",
                 "OutputArtifacts": [
@@ -4867,6 +4890,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 2`] = `
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "REPLACED-UUID",
@@ -4959,7 +4983,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 2`] = `
                       {
                         "Ref": "AWS::Partition",
                       },
-                      ":s3:::test-bucket/lza/v1.15.5.zip",
+                      ":s3:::test-bucket/lza/v1.16.3.zip",
                     ],
                   ],
                 },
@@ -5376,6 +5400,16 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 2`] = `
               "Type": "PLAINTEXT",
               "Value": "true",
             },
+            {
+              "Name": "VERBOSE_LOG_GROUP_NAME",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator-Module-Verbose-Logs",
+            },
+            {
+              "Name": "MODULE_RESOURCE_PREFIX",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator",
+            },
           ],
           "Image": "aws/codebuild/standard:7.0",
           "ImagePullCredentialsType": "CODEBUILD",
@@ -5397,10 +5431,12 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 2`] = `
                 "version: 0.2
 phases:
   install:
-    runtime-versions:
-      nodejs: 22
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
+      - node -v
+      - ulimit -n 65535
       - "export WORK_DIR=$CODEBUILD_SRC_DIR/source/packages/@aws-accelerator/accelerator
 
         \\               export ARCHIVE_NAME=\\"\${ACCELERATOR_STAGE}.tgz\\"
@@ -5415,7 +5451,14 @@ phases:
       - env
       - '"\${WORK_DIR}/scripts/prepare-stage.sh"'
       - cd $WORK_DIR;
-      - RUNNER_ARGS="--partition ",
+      - echo "=========================================="
+      - echo "Verbose logs are being sent to CloudWatch Logs"
+      - 'echo "Log Group: aws-accelerator-Module-Verbose-Logs"'
+      - 'echo "Log Stream: $ACCELERATOR_STAGE/<timestamp>-000000000000"'
+      - echo "For detailed troubleshooting, view logs in CloudWatch Logs console"
+      - echo "=========================================="
+      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+      - yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -5423,17 +5466,20 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                " --config-dir $CODEBUILD_SRC_DIR_Config --stage $ACCELERATOR_STAGE --prefix AWSAccelerator"
-      - if false; then RUNNER_ARGS="$RUNNER_ARGS --use-existing-roles"; fi
-      - set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS;
-      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+                " --stage $ACCELERATOR_STAGE --accelerator-prefix $ACCELERATOR_PREFIX --verbose
       - |-
         if [ "\${ACCELERATOR_STAGE}" = "pre-approval" ]; then
+                        cd $WORK_DIR;
                         mkdir rawDiff;
                         cd rawDiff;
                         aws s3 sync "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/" .;
-                        for file in ./*.tgz; do tar -xf "$file" -C .; done;
-                        for file in ./*.diff; do cat "$file"; done;
+                        for file in ./*.tgz; do if command -v pigz &>/dev/null; then pigz -dc "$file" | tar xf - -C .; else tar -xf "$file" -C .; fi; done;
+                        for file in ./*.diff; do cat "$file"; echo; done;
+                        for file in ./*.module.diff; do cat "$file"; done;
+                        cd $WORK_DIR;
+                        yarn run ts-node --cwdMode --transpile-only generate-diff-viewer-cli.ts rawDiff diff-viewer.html;
+                        aws s3 cp diff-viewer.html "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html";
+                        echo "Download with: aws s3 cp \${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html ./diff-viewer.html";
                       fi
       - export FULL_SYNTH="true"
       - if [ $ASEA_MAPPING_BUCKET ]; then aws s3api head-object --bucket $ASEA_MAPPING_BUCKET --key $ASEA_MAPPING_FILE >/dev/null 2>&1 || export FULL_SYNTH="false"; fi;
@@ -5460,22 +5506,20 @@ phases:
                 ";
                           fi
                           if [ $FULL_SYNTH = "true" ]; then
-                            set -e && tar -czf cf_$ARCHIVE_NAME -C cdk.out .;
+                            set -e && if command -v pigz &>/dev/null; then tar cf - -C cdk.out . | pigz > cf_$ARCHIVE_NAME; else tar -czf cf_$ARCHIVE_NAME -C cdk.out .; fi;
                           else
                             touch full-synth-false.txt;
                           fi
                           if [ "\${ACCELERATOR_ENABLE_APPROVAL_STAGE}" = "Yes" ] && [ "$ACCELERATOR_STAGE" != "bootstrap" ]; then
-                            tar -czf diff_cdk_out_$ARCHIVE_NAME -C cdk.out .
-                            find cdk.out -type f -name "*.diff" -print0 | tar --transform='s|.*/||' -czf diff_$ARCHIVE_NAME --null -T -
-                            aws s3 cp diff_$ARCHIVE_NAME $DIFFS_DIR/$CODEPIPELINE_EXECUTION_ID/
-                          fi
-                       else
-                        eval ARTIFACTS='$'CODEBUILD_SRC_DIR_$STAGE_ARTIFACT
-                        if [ -f "\${ARTIFACTS}/cf_\${ARCHIVE_NAME}" ]; then
-                             mkdir -p cdk.out
-                             tar -xzf $ARTIFACTS/cf_$ARCHIVE_NAME -C cdk.out;
-                         else
-                            set -e && yarn run ts-node --transpile-only cdk.ts synth --stage $ACCELERATOR_STAGE --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                            CDK_OPTIONS=deploy yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                " --region ",
+                {
+                  "Ref": "AWS::Region",
+                },
+                "REPLACED-JSON-PATH.json",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -5488,11 +5532,13 @@ phases:
                 ";
                         fi
                        fi
+  post_build:
+    commands:
+      - '"$WORK_DIR/scripts/collect-diagnostics.sh"'
 artifacts:
   base-directory: $WORK_DIR
   files:
     - cf_$ARCHIVE_NAME
-    - diff_cdk_out_$ARCHIVE_NAME
     - full-synth-false.txt
 ",
               ],
@@ -5508,7 +5554,7 @@ artifacts:
       "Properties": {
         "Name": "/accelerator/PipelineStackRegionalDeploy/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -5830,7 +5876,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 3`] = `
                 "Configuration": {
                   "PollForSourceChanges": false,
                   "S3Bucket": "test-bucket",
-                  "S3ObjectKey": "lza/v1.15.5.zip",
+                  "S3ObjectKey": "lza/v1.16.3.zip",
                 },
                 "Name": "Source",
                 "OutputArtifacts": [
@@ -7423,6 +7469,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 3`] = `
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "REPLACED-UUID",
@@ -7515,7 +7562,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 3`] = `
                       {
                         "Ref": "AWS::Partition",
                       },
-                      ":s3:::test-bucket/lza/v1.15.5.zip",
+                      ":s3:::test-bucket/lza/v1.16.3.zip",
                     ],
                   ],
                 },
@@ -7912,6 +7959,16 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 3`] = `
               "Type": "PLAINTEXT",
               "Value": "true",
             },
+            {
+              "Name": "VERBOSE_LOG_GROUP_NAME",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator-Module-Verbose-Logs",
+            },
+            {
+              "Name": "MODULE_RESOURCE_PREFIX",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator",
+            },
           ],
           "Image": "aws/codebuild/standard:7.0",
           "ImagePullCredentialsType": "CODEBUILD",
@@ -7933,10 +7990,12 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 3`] = `
                 "version: 0.2
 phases:
   install:
-    runtime-versions:
-      nodejs: 22
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
+      - node -v
+      - ulimit -n 65535
       - "export WORK_DIR=$CODEBUILD_SRC_DIR/source/packages/@aws-accelerator/accelerator
 
         \\               export ARCHIVE_NAME=\\"\${ACCELERATOR_STAGE}.tgz\\"
@@ -7951,7 +8010,14 @@ phases:
       - env
       - '"\${WORK_DIR}/scripts/prepare-stage.sh"'
       - cd $WORK_DIR;
-      - RUNNER_ARGS="--partition ",
+      - echo "=========================================="
+      - echo "Verbose logs are being sent to CloudWatch Logs"
+      - 'echo "Log Group: aws-accelerator-Module-Verbose-Logs"'
+      - 'echo "Log Stream: $ACCELERATOR_STAGE/<timestamp>-000000000000"'
+      - echo "For detailed troubleshooting, view logs in CloudWatch Logs console"
+      - echo "=========================================="
+      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+      - yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -7959,17 +8025,20 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                " --config-dir $CODEBUILD_SRC_DIR_Config --stage $ACCELERATOR_STAGE --prefix AWSAccelerator"
-      - if false; then RUNNER_ARGS="$RUNNER_ARGS --use-existing-roles"; fi
-      - set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS;
-      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+                " --stage $ACCELERATOR_STAGE --accelerator-prefix $ACCELERATOR_PREFIX --verbose
       - |-
         if [ "\${ACCELERATOR_STAGE}" = "pre-approval" ]; then
+                        cd $WORK_DIR;
                         mkdir rawDiff;
                         cd rawDiff;
                         aws s3 sync "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/" .;
-                        for file in ./*.tgz; do tar -xf "$file" -C .; done;
-                        for file in ./*.diff; do cat "$file"; done;
+                        for file in ./*.tgz; do if command -v pigz &>/dev/null; then pigz -dc "$file" | tar xf - -C .; else tar -xf "$file" -C .; fi; done;
+                        for file in ./*.diff; do cat "$file"; echo; done;
+                        for file in ./*.module.diff; do cat "$file"; done;
+                        cd $WORK_DIR;
+                        yarn run ts-node --cwdMode --transpile-only generate-diff-viewer-cli.ts rawDiff diff-viewer.html;
+                        aws s3 cp diff-viewer.html "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html";
+                        echo "Download with: aws s3 cp \${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html ./diff-viewer.html";
                       fi
       - export FULL_SYNTH="true"
       - if [ $ASEA_MAPPING_BUCKET ]; then aws s3api head-object --bucket $ASEA_MAPPING_BUCKET --key $ASEA_MAPPING_FILE >/dev/null 2>&1 || export FULL_SYNTH="false"; fi;
@@ -7996,22 +8065,20 @@ phases:
                 ";
                           fi
                           if [ $FULL_SYNTH = "true" ]; then
-                            set -e && tar -czf cf_$ARCHIVE_NAME -C cdk.out .;
+                            set -e && if command -v pigz &>/dev/null; then tar cf - -C cdk.out . | pigz > cf_$ARCHIVE_NAME; else tar -czf cf_$ARCHIVE_NAME -C cdk.out .; fi;
                           else
                             touch full-synth-false.txt;
                           fi
                           if [ "\${ACCELERATOR_ENABLE_APPROVAL_STAGE}" = "Yes" ] && [ "$ACCELERATOR_STAGE" != "bootstrap" ]; then
-                            tar -czf diff_cdk_out_$ARCHIVE_NAME -C cdk.out .
-                            find cdk.out -type f -name "*.diff" -print0 | tar --transform='s|.*/||' -czf diff_$ARCHIVE_NAME --null -T -
-                            aws s3 cp diff_$ARCHIVE_NAME $DIFFS_DIR/$CODEPIPELINE_EXECUTION_ID/
-                          fi
-                       else
-                        eval ARTIFACTS='$'CODEBUILD_SRC_DIR_$STAGE_ARTIFACT
-                        if [ -f "\${ARTIFACTS}/cf_\${ARCHIVE_NAME}" ]; then
-                             mkdir -p cdk.out
-                             tar -xzf $ARTIFACTS/cf_$ARCHIVE_NAME -C cdk.out;
-                         else
-                            set -e && yarn run ts-node --transpile-only cdk.ts synth --stage $ACCELERATOR_STAGE --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                            CDK_OPTIONS=deploy yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                " --region ",
+                {
+                  "Ref": "AWS::Region",
+                },
+                "REPLACED-JSON-PATH.json",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -8024,11 +8091,13 @@ phases:
                 ";
                         fi
                        fi
+  post_build:
+    commands:
+      - '"$WORK_DIR/scripts/collect-diagnostics.sh"'
 artifacts:
   base-directory: $WORK_DIR
   files:
     - cf_$ARCHIVE_NAME
-    - diff_cdk_out_$ARCHIVE_NAME
     - full-synth-false.txt
 ",
               ],
@@ -8044,7 +8113,7 @@ artifacts:
       "Properties": {
         "Name": "/accelerator/PipelineStackCustomS3Path/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -8398,7 +8467,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 4`] = `
                 "Configuration": {
                   "PollForSourceChanges": false,
                   "S3Bucket": "test-bucket",
-                  "S3ObjectKey": "lza/v1.15.5.zip",
+                  "S3ObjectKey": "lza/v1.16.3.zip",
                 },
                 "Name": "Source",
                 "OutputArtifacts": [
@@ -10062,6 +10131,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 4`] = `
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "REPLACED-UUID",
@@ -10154,7 +10224,7 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 4`] = `
                       {
                         "Ref": "AWS::Partition",
                       },
-                      ":s3:::test-bucket/lza/v1.15.5.zip",
+                      ":s3:::test-bucket/lza/v1.16.3.zip",
                     ],
                   ],
                 },
@@ -10679,6 +10749,16 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 4`] = `
               "Type": "PLAINTEXT",
               "Value": "true",
             },
+            {
+              "Name": "VERBOSE_LOG_GROUP_NAME",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator-Module-Verbose-Logs",
+            },
+            {
+              "Name": "MODULE_RESOURCE_PREFIX",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator",
+            },
           ],
           "Image": "aws/codebuild/standard:7.0",
           "ImagePullCredentialsType": "CODEBUILD",
@@ -10700,10 +10780,12 @@ exports[`PipelineStack > Construct(PipelineStack):  Snapshot Test 4`] = `
                 "version: 0.2
 phases:
   install:
-    runtime-versions:
-      nodejs: 22
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
+      - node -v
+      - ulimit -n 65535
       - "export WORK_DIR=$CODEBUILD_SRC_DIR/source/packages/@aws-accelerator/accelerator
 
         \\               export ARCHIVE_NAME=\\"\${ACCELERATOR_STAGE}.tgz\\"
@@ -10718,7 +10800,14 @@ phases:
       - env
       - '"\${WORK_DIR}/scripts/prepare-stage.sh"'
       - cd $WORK_DIR;
-      - RUNNER_ARGS="--partition ",
+      - echo "=========================================="
+      - echo "Verbose logs are being sent to CloudWatch Logs"
+      - 'echo "Log Group: aws-accelerator-Module-Verbose-Logs"'
+      - 'echo "Log Stream: $ACCELERATOR_STAGE/<timestamp>-000000000000"'
+      - echo "For detailed troubleshooting, view logs in CloudWatch Logs console"
+      - echo "=========================================="
+      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+      - yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -10726,17 +10815,20 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                " --config-dir $CODEBUILD_SRC_DIR_Config --stage $ACCELERATOR_STAGE --prefix AWSAccelerator"
-      - if false; then RUNNER_ARGS="$RUNNER_ARGS --use-existing-roles"; fi
-      - set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS;
-      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+                " --stage $ACCELERATOR_STAGE --accelerator-prefix $ACCELERATOR_PREFIX --verbose
       - |-
         if [ "\${ACCELERATOR_STAGE}" = "pre-approval" ]; then
+                        cd $WORK_DIR;
                         mkdir rawDiff;
                         cd rawDiff;
                         aws s3 sync "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/" .;
-                        for file in ./*.tgz; do tar -xf "$file" -C .; done;
-                        for file in ./*.diff; do cat "$file"; done;
+                        for file in ./*.tgz; do if command -v pigz &>/dev/null; then pigz -dc "$file" | tar xf - -C .; else tar -xf "$file" -C .; fi; done;
+                        for file in ./*.diff; do cat "$file"; echo; done;
+                        for file in ./*.module.diff; do cat "$file"; done;
+                        cd $WORK_DIR;
+                        yarn run ts-node --cwdMode --transpile-only generate-diff-viewer-cli.ts rawDiff diff-viewer.html;
+                        aws s3 cp diff-viewer.html "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html";
+                        echo "Download with: aws s3 cp \${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html ./diff-viewer.html";
                       fi
       - export FULL_SYNTH="true"
       - if [ $ASEA_MAPPING_BUCKET ]; then aws s3api head-object --bucket $ASEA_MAPPING_BUCKET --key $ASEA_MAPPING_FILE >/dev/null 2>&1 || export FULL_SYNTH="false"; fi;
@@ -10763,22 +10855,20 @@ phases:
                 ";
                           fi
                           if [ $FULL_SYNTH = "true" ]; then
-                            set -e && tar -czf cf_$ARCHIVE_NAME -C cdk.out .;
+                            set -e && if command -v pigz &>/dev/null; then tar cf - -C cdk.out . | pigz > cf_$ARCHIVE_NAME; else tar -czf cf_$ARCHIVE_NAME -C cdk.out .; fi;
                           else
                             touch full-synth-false.txt;
                           fi
                           if [ "\${ACCELERATOR_ENABLE_APPROVAL_STAGE}" = "Yes" ] && [ "$ACCELERATOR_STAGE" != "bootstrap" ]; then
-                            tar -czf diff_cdk_out_$ARCHIVE_NAME -C cdk.out .
-                            find cdk.out -type f -name "*.diff" -print0 | tar --transform='s|.*/||' -czf diff_$ARCHIVE_NAME --null -T -
-                            aws s3 cp diff_$ARCHIVE_NAME $DIFFS_DIR/$CODEPIPELINE_EXECUTION_ID/
-                          fi
-                       else
-                        eval ARTIFACTS='$'CODEBUILD_SRC_DIR_$STAGE_ARTIFACT
-                        if [ -f "\${ARTIFACTS}/cf_\${ARCHIVE_NAME}" ]; then
-                             mkdir -p cdk.out
-                             tar -xzf $ARTIFACTS/cf_$ARCHIVE_NAME -C cdk.out;
-                         else
-                            set -e && yarn run ts-node --transpile-only cdk.ts synth --stage $ACCELERATOR_STAGE --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                            CDK_OPTIONS=deploy yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                " --region ",
+                {
+                  "Ref": "AWS::Region",
+                },
+                "REPLACED-JSON-PATH.json",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -10791,11 +10881,13 @@ phases:
                 ";
                         fi
                        fi
+  post_build:
+    commands:
+      - '"$WORK_DIR/scripts/collect-diagnostics.sh"'
 artifacts:
   base-directory: $WORK_DIR
   files:
     - cf_$ARCHIVE_NAME
-    - diff_cdk_out_$ARCHIVE_NAME
     - full-synth-false.txt
 ",
               ],
@@ -10811,7 +10903,7 @@ artifacts:
       "Properties": {
         "Name": "/accelerator/PipelineStackConfigInS3/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -11133,7 +11225,7 @@ exports[`PipelineStack customS3Path > Construct(PipelineStack):  Snapshot Test 1
                 "Configuration": {
                   "PollForSourceChanges": false,
                   "S3Bucket": "test-bucket",
-                  "S3ObjectKey": "lza/v1.15.5.zip",
+                  "S3ObjectKey": "lza/v1.16.3.zip",
                 },
                 "Name": "Source",
                 "OutputArtifacts": [
@@ -12726,6 +12818,7 @@ exports[`PipelineStack customS3Path > Construct(PipelineStack):  Snapshot Test 1
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "REPLACED-UUID",
@@ -12818,7 +12911,7 @@ exports[`PipelineStack customS3Path > Construct(PipelineStack):  Snapshot Test 1
                       {
                         "Ref": "AWS::Partition",
                       },
-                      ":s3:::test-bucket/lza/v1.15.5.zip",
+                      ":s3:::test-bucket/lza/v1.16.3.zip",
                     ],
                   ],
                 },
@@ -13215,6 +13308,16 @@ exports[`PipelineStack customS3Path > Construct(PipelineStack):  Snapshot Test 1
               "Type": "PLAINTEXT",
               "Value": "true",
             },
+            {
+              "Name": "VERBOSE_LOG_GROUP_NAME",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator-Module-Verbose-Logs",
+            },
+            {
+              "Name": "MODULE_RESOURCE_PREFIX",
+              "Type": "PLAINTEXT",
+              "Value": "aws-accelerator",
+            },
           ],
           "Image": "aws/codebuild/standard:7.0",
           "ImagePullCredentialsType": "CODEBUILD",
@@ -13236,10 +13339,12 @@ exports[`PipelineStack customS3Path > Construct(PipelineStack):  Snapshot Test 1
                 "version: 0.2
 phases:
   install:
-    runtime-versions:
-      nodejs: 22
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
+      - node -v
+      - ulimit -n 65535
       - "export WORK_DIR=$CODEBUILD_SRC_DIR/source/packages/@aws-accelerator/accelerator
 
         \\               export ARCHIVE_NAME=\\"\${ACCELERATOR_STAGE}.tgz\\"
@@ -13254,7 +13359,14 @@ phases:
       - env
       - '"\${WORK_DIR}/scripts/prepare-stage.sh"'
       - cd $WORK_DIR;
-      - RUNNER_ARGS="--partition ",
+      - echo "=========================================="
+      - echo "Verbose logs are being sent to CloudWatch Logs"
+      - 'echo "Log Group: aws-accelerator-Module-Verbose-Logs"'
+      - 'echo "Log Stream: $ACCELERATOR_STAGE/<timestamp>-000000000000"'
+      - echo "For detailed troubleshooting, view logs in CloudWatch Logs console"
+      - echo "=========================================="
+      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+      - yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -13262,17 +13374,20 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                " --config-dir $CODEBUILD_SRC_DIR_Config --stage $ACCELERATOR_STAGE --prefix AWSAccelerator"
-      - if false; then RUNNER_ARGS="$RUNNER_ARGS --use-existing-roles"; fi
-      - set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS;
-      - set -e && ./scripts/bootstrap_management_before_prepare.sh us-east-1;
+                " --stage $ACCELERATOR_STAGE --accelerator-prefix $ACCELERATOR_PREFIX --verbose
       - |-
         if [ "\${ACCELERATOR_STAGE}" = "pre-approval" ]; then
+                        cd $WORK_DIR;
                         mkdir rawDiff;
                         cd rawDiff;
                         aws s3 sync "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/" .;
-                        for file in ./*.tgz; do tar -xf "$file" -C .; done;
-                        for file in ./*.diff; do cat "$file"; done;
+                        for file in ./*.tgz; do if command -v pigz &>/dev/null; then pigz -dc "$file" | tar xf - -C .; else tar -xf "$file" -C .; fi; done;
+                        for file in ./*.diff; do cat "$file"; echo; done;
+                        for file in ./*.module.diff; do cat "$file"; done;
+                        cd $WORK_DIR;
+                        yarn run ts-node --cwdMode --transpile-only generate-diff-viewer-cli.ts rawDiff diff-viewer.html;
+                        aws s3 cp diff-viewer.html "\${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html";
+                        echo "Download with: aws s3 cp \${DIFFS_DIR}/\${CODEPIPELINE_EXECUTION_ID}/diff-viewer.html ./diff-viewer.html";
                       fi
       - export FULL_SYNTH="true"
       - if [ $ASEA_MAPPING_BUCKET ]; then aws s3api head-object --bucket $ASEA_MAPPING_BUCKET --key $ASEA_MAPPING_FILE >/dev/null 2>&1 || export FULL_SYNTH="false"; fi;
@@ -13299,22 +13414,20 @@ phases:
                 ";
                           fi
                           if [ $FULL_SYNTH = "true" ]; then
-                            set -e && tar -czf cf_$ARCHIVE_NAME -C cdk.out .;
+                            set -e && if command -v pigz &>/dev/null; then tar cf - -C cdk.out . | pigz > cf_$ARCHIVE_NAME; else tar -czf cf_$ARCHIVE_NAME -C cdk.out .; fi;
                           else
                             touch full-synth-false.txt;
                           fi
                           if [ "\${ACCELERATOR_ENABLE_APPROVAL_STAGE}" = "Yes" ] && [ "$ACCELERATOR_STAGE" != "bootstrap" ]; then
-                            tar -czf diff_cdk_out_$ARCHIVE_NAME -C cdk.out .
-                            find cdk.out -type f -name "*.diff" -print0 | tar --transform='s|.*/||' -czf diff_$ARCHIVE_NAME --null -T -
-                            aws s3 cp diff_$ARCHIVE_NAME $DIFFS_DIR/$CODEPIPELINE_EXECUTION_ID/
-                          fi
-                       else
-                        eval ARTIFACTS='$'CODEBUILD_SRC_DIR_$STAGE_ARTIFACT
-                        if [ -f "\${ARTIFACTS}/cf_\${ARCHIVE_NAME}" ]; then
-                             mkdir -p cdk.out
-                             tar -xzf $ARTIFACTS/cf_$ARCHIVE_NAME -C cdk.out;
-                         else
-                            set -e && yarn run ts-node --transpile-only cdk.ts synth --stage $ACCELERATOR_STAGE --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                            CDK_OPTIONS=deploy yarn run lza --config-dir $CODEBUILD_SRC_DIR_Config --partition ",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                " --region ",
+                {
+                  "Ref": "AWS::Region",
+                },
+                "REPLACED-JSON-PATH.json",
                 {
                   "Ref": "AWS::Partition",
                 },
@@ -13327,11 +13440,13 @@ phases:
                 ";
                         fi
                        fi
+  post_build:
+    commands:
+      - '"$WORK_DIR/scripts/collect-diagnostics.sh"'
 artifacts:
   base-directory: $WORK_DIR
   files:
     - cf_$ARCHIVE_NAME
-    - diff_cdk_out_$ARCHIVE_NAME
     - full-synth-false.txt
 ",
               ],
@@ -13347,7 +13462,7 @@ artifacts:
       "Properties": {
         "Name": "/accelerator/PipelineStackCustomS3Path/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },

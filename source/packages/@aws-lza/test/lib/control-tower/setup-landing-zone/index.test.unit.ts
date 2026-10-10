@@ -165,6 +165,7 @@ const MOCK_CONSTANTS = {
     Status: 'mockStatus',
   },
   ctKmsKeyArn: 'mockCtKmsKeyArn',
+  ctConfigKmsKeyArn: 'mockCtConfigKmsKeyArn',
   existingLandingZoneDetails: {
     manifest: {
       accessManagement: {
@@ -355,7 +356,7 @@ describe('Accelerator ControlTower Landing Zone Module', () => {
 
       createControlTowerKeysSpy.mockResolvedValue({
         centralizedLoggingKeyArn: MOCK_CONSTANTS.ctKmsKeyArn,
-        configLoggingKeyArn: MOCK_CONSTANTS.ctKmsKeyArn,
+        configLoggingKeyArn: MOCK_CONSTANTS.ctConfigKmsKeyArn,
       });
 
       makeManifestDocumentSpy.mockResolvedValue(MOCK_CONSTANTS.existingLandingZoneDetails.manifest);
@@ -409,6 +410,10 @@ describe('Accelerator ControlTower Landing Zone Module', () => {
       expect(response).toMatch(/AWS Control Tower landing zone deployed successfully./);
       expect(CreateLandingZoneCommand).toHaveBeenCalledTimes(1);
       expect(GetLandingZoneOperationCommand).toHaveBeenCalledTimes(1);
+      expect(makeManifestDocumentSpy).toHaveBeenCalledWith(expect.any(Object), 'CREATE', {
+        centralizedLoggingKeyArn: MOCK_CONSTANTS.ctKmsKeyArn,
+        configLoggingKeyArn: MOCK_CONSTANTS.ctConfigKmsKeyArn,
+      });
     });
 
     test('should be successful while rechecking of operation status', async () => {
@@ -1062,13 +1067,13 @@ describe('Accelerator ControlTower Landing Zone Module', () => {
         configuration: MOCK_CONSTANTS.controlTowerLandingZoneConfiguration,
       });
 
-      // Verify
+      // Verify - configLoggingKeyArn should preserve the config hub's own key
       expect(makeManifestDocumentSpy).toHaveBeenCalledWith(
         expect.any(Object),
         'UPDATE',
         {
           centralizedLoggingKeyArn: mockCentralizedLoggingKeyArn,
-          configLoggingKeyArn: mockCentralizedLoggingKeyArn,
+          configLoggingKeyArn: mockConfigHubKeyArn,
         },
         MOCK_CONSTANTS.existingLandingZoneDetails.manifest,
       );

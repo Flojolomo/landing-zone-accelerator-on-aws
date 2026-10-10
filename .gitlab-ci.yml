@@ -48,15 +48,15 @@
 #
 # 7. Project-Specific Version Tag Rules
 # --------------------------------
-# if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+# if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
 # when: always
-# Meaning: Execute the job only on specific project (11925) and when tag matches version pattern
+# Meaning: Execute the job only on specific project (21753) and when tag matches version pattern
 #
 # 8. Project-Specific Integration Branch Rules
 # ---------------------------------------
-# if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_BRANCH == "integ"
+# if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_BRANCH == "integ"
 # when: always
-# Meaning: Execute the job only on specific project (11925) and on the "integ" branch
+# Meaning: Execute the job only on specific project (21753) and on the "integ" branch
 #
 # 9. Default Skip Rule
 # -----------------
@@ -79,7 +79,7 @@
 #
 # CI_PROJECT_ID:
 #   - GitLab's internal project identifier
-#   - "11925" represents specific project
+#   - "21753" represents specific project
 #
 # CI_COMMIT_TAG:
 #   - The tag name for which the pipeline is running
@@ -108,7 +108,7 @@
 #    - $: End of string
 #    - Examples: release-v1.0.0, feature-v2.3.4
 
-image: public.ecr.aws/bitnami/node:22.15.0
+image: public.ecr.aws/docker/library/node:22.15.0
 
 before_script:
   - rm -rf /var/lib/apt/lists/*
@@ -119,6 +119,8 @@ before_script:
 
 include:
   # - '.gitlab/jobs/ci-job-definitions.yml'
+  # Module integration test jobs
+  - '.gitlab/jobs/security/integ-test.yaml'
   # Mirror jobs for CodeCommit replication
   - '.gitlab/jobs/mirror-job.yaml'
   - '.gitlab/jobs/mirror-universal-config-repo.yaml'
@@ -126,13 +128,21 @@ include:
 stages:
   - pipeline
   - mirror
+  - security
+
+variables:
+  KUBERNETES_HELPER_MEMORY_REQUEST: "1Gi"
+  KUBERNETES_HELPER_MEMORY_LIMIT: "2Gi"
 
 accelerator:scan-sensitive-content:
   stage: pipeline
   tags:
     - arch:amd64
-    - size:small
   variables:
+    KUBERNETES_CPU_REQUEST: "1"
+    KUBERNETES_CPU_LIMIT: "1"
+    KUBERNETES_MEMORY_REQUEST: "2Gi"
+    KUBERNETES_MEMORY_LIMIT: "2Gi"
     # SENSITIVE_DOMAINS only needed in main repository
     # Forks will use basic pattern scanning automatically
     SCAN_EXCLUDE_DIRS: ".git node_modules build dist coverage"
@@ -147,11 +157,103 @@ accelerator:scan-sensitive-content:
       when: never
     - when: always
 
-accelerator:build:
-  stage: pipeline
+accelerator:daily-vulnerability-scan:
+  stage: security
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
   tags:
     - arch:amd64
-    - size:2xlarge
+  script:
+    - chmod +x .gitlab/scripts/vulnerability-scan.sh
+    - chmod +x .gitlab/scripts/issue-manager.sh
+    - ./.gitlab/scripts/vulnerability-scan.sh
+    - ./.gitlab/scripts/issue-manager.sh
+  artifacts:
+    name: vulnerability-scan-results
+    when: always
+    paths:
+      - software-dependency-findings.json
+      - filtered-findings.json
+      - masked-findings.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION == "Daily Vulnerability Scan" && $CI_COMMIT_BRANCH == "integ"
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - when: never
+
+accelerator:cve-remediation:
+  stage: security
+  needs: []
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
+    VULN_ASSIGNEE: "erwaxler"
+  tags:
+    - arch:amd64
+  before_script:
+    - apt-get update && apt-get install -y jq
+    - git config user.email "lza-cve-bot@amazon.com"
+    - git config user.name "LZA CVE Remediation Bot"
+    - git remote set-url origin "https://oauth2:${VULN_SCAN_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - echo "Tools:" && yarn --version && jq --version && git --version
+  script:
+    - chmod +x .gitlab/scripts/cve-remediate.sh
+    - ./.gitlab/scripts/cve-remediate.sh
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION == "Daily Vulnerability Scan" && $CI_COMMIT_BRANCH == "integ"
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - when: never
+  artifacts:
+    paths:
+      - cve-remediation-report.json
+    expire_in: 30 days
+    when: always
+
+accelerator:nightly-github-sync:
+  stage: security
+  variables:
+    KUBERNETES_CPU_REQUEST: "1"
+    KUBERNETES_CPU_LIMIT: "1"
+    KUBERNETES_MEMORY_REQUEST: "2Gi"
+    KUBERNETES_MEMORY_LIMIT: "2Gi"
+  tags:
+    - arch:amd64
+  allow_failure: true
+  script:
+    - chmod +x .gitlab/scripts/github-issue-sync.sh
+    - ./.gitlab/scripts/github-issue-sync.sh
+  artifacts:
+    name: github-sync-results
+    when: always
+    paths:
+      - github-sync-summary.json
+      - failed-items.json
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_PIPELINE_SCHEDULE_DESCRIPTION == "Nightly GitHub Sync" && $CI_COMMIT_BRANCH == "integ"
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == "integ" && $GITHUB_SYNC_ALLOW_MANUAL == "true"
+      when: manual
+    - when: never
+
+accelerator:build:
+  stage: pipeline
+  variables:
+    KUBERNETES_CPU_REQUEST: "16"
+    KUBERNETES_CPU_LIMIT: "16"
+    KUBERNETES_MEMORY_REQUEST: "64Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
+  tags:
+    - arch:amd64
   script:
     - "export NODE_OPTIONS=--max_old_space_size=49152"
     - "npm install yarn@1.22.22"
@@ -176,9 +278,13 @@ accelerator:build:
 accelerator:lint:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "8"
+    KUBERNETES_CPU_LIMIT: "8"
+    KUBERNETES_MEMORY_REQUEST: "32Gi"
+    KUBERNETES_MEMORY_LIMIT: "32Gi"
   tags:
     - arch:amd64
-    - size:xlarge
   script:
     - "export NODE_OPTIONS=--max_old_space_size=28672"
     - "npm install yarn@1.22.22"
@@ -214,23 +320,79 @@ accelerator:lint:
     - when: always
 accelerator:attribution-check:
   stage: pipeline
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - echo "This merge request contains commits from an external author and is incorrectly configured to squash commits, which can erase author attribution. Please set \"Squash commits on merge\" to false and retry the pipeline."
     - exit 1
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_AUTHOR !~ /@amazon/ && $CI_MERGE_REQUEST_SQUASH_ON_MERGE == "true"
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_AUTHOR !~ /@amazon/ && $CI_MERGE_REQUEST_SQUASH_ON_MERGE == "true"
       when: always
     - when: never
 
+release:test:utils:
+  stage: pipeline
+  needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "16"
+    KUBERNETES_CPU_LIMIT: "16"
+    KUBERNETES_MEMORY_REQUEST: "64Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
+  tags:
+    - arch:amd64
+  script:
+    - "export NODE_OPTIONS=--max_old_space_size=49152"
+    - "cd source/packages/@aws-accelerator/utils"
+    - "yarn test:unit"
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - source/packages/@aws-accelerator/utils/test-reports/*.xml
+    expire_in: 1 day
+  rules:
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+      when: always
+    - when: never
+release:test:cdk-extensions:
+  stage: pipeline
+  needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "16"
+    KUBERNETES_CPU_LIMIT: "16"
+    KUBERNETES_MEMORY_REQUEST: "64Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
+  tags:
+    - arch:amd64
+  script:
+    - "export NODE_OPTIONS=--max_old_space_size=49152"
+    - "cd source/packages/@aws-cdk-extensions/cdk-extensions"
+    - "yarn test:unit"
+  artifacts:
+    when: always
+    reports:
+      junit:
+        - source/packages/@aws-cdk-extensions/cdk-extensions/test-reports/*.xml
+    expire_in: 1 day
+  rules:
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+      when: always
+    - when: never
 unit-test:accelerator:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "16"
+    KUBERNETES_CPU_LIMIT: "16"
+    KUBERNETES_MEMORY_REQUEST: "64Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
   tags:
     - arch:amd64
-    - size:2xlarge
   script:
     - "export NODE_OPTIONS=--max_old_space_size=49152"
     - "cd source/packages/@aws-accelerator/accelerator"
@@ -247,16 +409,20 @@ unit-test:accelerator:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:config:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - "export NODE_OPTIONS=--max_old_space_size=6144"
     - "cd source/packages/@aws-accelerator/config"
@@ -273,16 +439,20 @@ unit-test:config:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:constructs:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "16"
+    KUBERNETES_CPU_LIMIT: "16"
+    KUBERNETES_MEMORY_REQUEST: "64Gi"
+    KUBERNETES_MEMORY_LIMIT: "64Gi"
   tags:
     - arch:amd64
-    - size:2xlarge
   script:
     - "export NODE_OPTIONS=--max_old_space_size=49152"
     - "cd source/packages/@aws-accelerator/constructs"
@@ -299,16 +469,20 @@ unit-test:constructs:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:govcloud-account-vending:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - "export NODE_OPTIONS=--max_old_space_size=6144"
     - "cd source/packages/@aws-accelerator/govcloud-account-vending"
@@ -325,16 +499,20 @@ unit-test:govcloud-account-vending:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:installer:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - "export NODE_OPTIONS=--max_old_space_size=6144"
     - "cd source/packages/@aws-accelerator/installer"
@@ -355,16 +533,20 @@ unit-test:installer:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:modules:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - "export NODE_OPTIONS=--max_old_space_size=6144"
     - "cd source/packages/@aws-accelerator/modules"
@@ -381,16 +563,20 @@ unit-test:modules:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:tools:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - "export NODE_OPTIONS=--max_old_space_size=6144"
     - "cd source/packages/@aws-accelerator/tools"
@@ -407,16 +593,20 @@ unit-test:tools:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:aws-lza:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - "export NODE_OPTIONS=--max_old_space_size=6144"
     - "cd source/packages/@aws-lza"
@@ -433,16 +623,20 @@ unit-test:aws-lza:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 unit-test:installer-container:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "2"
+    KUBERNETES_CPU_LIMIT: "2"
+    KUBERNETES_MEMORY_REQUEST: "8Gi"
+    KUBERNETES_MEMORY_LIMIT: "8Gi"
   tags:
     - arch:amd64
-    - size:medium
   script:
     - "export NODE_OPTIONS=--max_old_space_size=6144"
     - "cd source/packages/@aws-accelerator/installer-container"
@@ -463,16 +657,20 @@ unit-test:installer-container:
     - if: $CI_COMMIT_BRANCH =~ /.*v(\d.+){2}\d$/
       when: never
     - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: never
+      when: always
     - if: $CI_MERGE_REQUEST_IID != null
       when: never
     - when: always
 installer:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
   tags:
     - arch:amd64
-    - size:large
   script:
     - "cd source"
     - "cd packages/@aws-accelerator/installer"
@@ -492,9 +690,13 @@ installer:
 installer-container:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
   tags:
     - arch:amd64
-    - size:large
   script:
     - "cd source/packages/@aws-accelerator/installer-container"
     - "yarn cdk synth --context use-external-pipeline-account=true"
@@ -513,9 +715,13 @@ installer-container:
 workshop:
   stage: pipeline
   needs: ["accelerator:build"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
   tags:
     - arch:amd64
-    - size:large
   when: manual
   script:
     - "cd source"
@@ -544,8 +750,11 @@ release:build-typedocs:
       artifacts: true
   tags:
     - arch:amd64
-    - size:xlarge
   variables:
+    KUBERNETES_CPU_REQUEST: "8"
+    KUBERNETES_CPU_LIMIT: "8"
+    KUBERNETES_MEMORY_REQUEST: "32Gi"
+    KUBERNETES_MEMORY_LIMIT: "32Gi"
     AWS_DEFAULT_REGION: us-east-1
     AWS_CREDS_TARGET_ROLE: "${GITLAB_S3_ROLE}"
     BUILD_S3_PATH: s3://${BUCKET_NAME}/build-release/typedocs.zip
@@ -578,61 +787,140 @@ release:build-typedocs:
     paths:
       - typedocs.zip
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
       when: always
     - when: never
 
-# make a zip file upon commit tag
-release:artifact-al2023-prep:
+# =============================================================================
+# Container build templates (shared by release and integ jobs)
+# =============================================================================
+
+.artifact-al2023-prep-template:
   stage: pipeline
   tags:
     - arch:amd64
-    - size:xlarge
+  variables:
+    KUBERNETES_CPU_REQUEST: "8"
+    KUBERNETES_CPU_LIMIT: "8"
+    KUBERNETES_MEMORY_REQUEST: "32Gi"
+    KUBERNETES_MEMORY_LIMIT: "32Gi"
+    VERSION: $CI_COMMIT_SHORT_SHA
   before_script:
     - dnf install nodejs22 tar gzip findutils -y
     - npm install -g yarn
   image:
-    # name: gcr.io/kaniko-project/executor:v1.20.0-debug
     name: public.ecr.aws/amazonlinux/amazonlinux:latest
     entrypoint:
       - ""
   script:
-    # make the open source distributable code
     - "export NODE_OPTIONS=--max_old_space_size=28672"
-    - "cd $CI_PROJECT_DIR/deployment && ls -lart . && $CI_PROJECT_DIR/deployment/build-s3-dist.sh lza $CI_COMMIT_TAG"
-
+    - "cd $CI_PROJECT_DIR/deployment && ls -lart . && $CI_PROJECT_DIR/deployment/build-s3-dist.sh lza $VERSION"
   artifacts:
     name: al2023_Prepare
     when: on_success
     untracked: true
     paths:
       - $CI_PROJECT_DIR/deployment/ecr/
-  rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: always
-    - when: never
 
-# use created context to build
-release:artifact-al2023-build:
+.artifact-al2023-build-template:
   stage: pipeline
-  needs: ["release:artifact-al2023-prep"]
   tags:
     - arch:amd64
-    - size:xlarge
+  variables:
+    KUBERNETES_CPU_REQUEST: "8"
+    KUBERNETES_CPU_LIMIT: "8"
+    KUBERNETES_MEMORY_REQUEST: "32Gi"
+    KUBERNETES_MEMORY_LIMIT: "32Gi"
+    VERSION: $CI_COMMIT_SHORT_SHA
   before_script:
     - mkdir -p /kaniko/.docker
   image:
     name: gcr.io/kaniko-project/executor:v1.23.2-debug
     entrypoint: [""]
   script:
-    - /kaniko/executor --context $CI_PROJECT_DIR/deployment/ecr/landing-zone-accelerator-on-aws/ --destination lza-$CI_COMMIT_TAG-al2023 --dockerfile $CI_PROJECT_DIR/deployment/ecr/landing-zone-accelerator-on-aws/Dockerfile --tarPath $CI_PROJECT_DIR/deployment/ecr/lza-$CI_COMMIT_TAG-al2023.tar.gz --no-push
+    - /kaniko/executor --context $CI_PROJECT_DIR/deployment/ecr/landing-zone-accelerator-on-aws/ --destination lza-$VERSION-al2023 --dockerfile $CI_PROJECT_DIR/deployment/ecr/landing-zone-accelerator-on-aws/Dockerfile --tarPath $CI_PROJECT_DIR/deployment/ecr/lza-$VERSION-al2023.tar.gz --no-push
   artifacts:
     name: al2023_build
     when: on_success
     paths:
-      - $CI_PROJECT_DIR/deployment/ecr/lza-$CI_COMMIT_TAG-al2023.tar.gz
+      - $CI_PROJECT_DIR/deployment/ecr/lza-$VERSION-al2023.tar.gz
+
+# =============================================================================
+# Release container jobs (triggered by version tags)
+# =============================================================================
+
+# make a zip file upon commit tag
+release:artifact-al2023-prep:
+  extends: .artifact-al2023-prep-template
+  variables:
+    VERSION: $CI_COMMIT_TAG
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+      when: always
+    - when: never
+
+# use created context to build
+release:artifact-al2023-build:
+  extends: .artifact-al2023-build-template
+  needs: ["release:artifact-al2023-prep"]
+  variables:
+    VERSION: $CI_COMMIT_TAG
+  rules:
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+      when: always
+    - when: never
+
+# =============================================================================
+# Integ container jobs (triggered by integ branch post-merge)
+# =============================================================================
+
+integ:artifact-al2023-prep:
+  extends: .artifact-al2023-prep-template
+  rules:
+    - if: $CI_MERGE_REQUEST_IID != null
+      when: never
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_BRANCH == "integ"
+      when: always
+    - when: never
+
+integ:artifact-al2023-build:
+  extends: .artifact-al2023-build-template
+  needs: ["integ:artifact-al2023-prep"]
+  rules:
+    - if: $CI_MERGE_REQUEST_IID != null
+      when: never
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_BRANCH == "integ"
+      when: always
+    - when: never
+
+integ:artifact-al2023-upload:
+  stage: pipeline
+  needs: ["integ:artifact-al2023-build"]
+  tags:
+    - arch:amd64
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
+    AWS_DEFAULT_REGION: us-west-2
+    AWS_CREDS_TARGET_ROLE: "${LZA_GITFARM_ROLE}"
+  script:
+    - "wget --progress=dot:mega -O /tmp/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+    - "unzip -q /tmp/awscliv2.zip -d /tmp"
+    - "/tmp/aws/install"
+    - cd $CI_PROJECT_DIR/deployment/ecr
+    - TARBALL="lza-${CI_COMMIT_SHORT_SHA}-al2023.tar.gz"
+    - 'test -f "$TARBALL" || { echo "ERROR: $TARBALL not found"; exit 1; }'
+    - echo "Found tarball $TARBALL"
+    - echo "${CI_COMMIT_SHA}" > commit-info.txt
+    - zip artifact.zip "$TARBALL" commit-info.txt
+    - aws s3 cp artifact.zip "s3://${LZA_GITFARM_BUCKET}/lza-integ/artifact.zip"
+    - echo "Upload complete. Commit SHA ${CI_COMMIT_SHA}"
+  rules:
+    - if: $CI_MERGE_REQUEST_IID != null
+      when: never
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_BRANCH == "integ"
       when: always
     - when: never
 
@@ -642,8 +930,11 @@ release:artifact-al2023-upload:
   needs: ["release:artifact-al2023-build"]
   tags:
     - arch:amd64
-    - size:large
   variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
     TOKEN:
   before_script:
     # ensure file exists before upload
@@ -661,7 +952,7 @@ release:artifact-al2023-upload:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file $CI_PROJECT_DIR/lza-$CI_COMMIT_TAG-al2023.tar.gz.sha1sum "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/lza-container/${CI_COMMIT_TAG}/lza-${CI_COMMIT_TAG}-al2023.tar.gz.sha1sum"
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+    - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
       when: always
     - when: never
 
@@ -669,9 +960,13 @@ release:artifact-al2023-upload:
 release:artifact-al2023-release:
   stage: pipeline
   needs: ["release:artifact-al2023-upload"]
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
   tags:
     - arch:amd64
-    - size:large
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   before_script:
     # this script ensures before_script which is common to test/build will not run for this specific container
@@ -683,43 +978,44 @@ release:artifact-al2023-release:
         --assets-link "{\"name\":\"lza-${CI_COMMIT_TAG}-al2023.tar.gz.sha1sum\",\"url\":\"${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/lza-container/${CI_COMMIT_TAG}/lza-${CI_COMMIT_TAG}-al2023.tar.gz.sha1sum\"}" \
         --description "Landing Zone Accelerator on AWS container version $CI_COMMIT_TAG built on AL2023"
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
-      when: always
-    - when: never
-
-release:run-tests:
-  stage: pipeline
-  tags:
-    - arch:amd64
-    - size:xlarge
-  before_script:
-    # Install dependencies
-    - "rm -rf /var/lib/apt/lists/*"
-    - "apt-get update"
-    - "apt-cache gencaches"
-  script:
-    # Run tests in the same way as the AWS Solutions pipeline
-    - "export NODE_OPTIONS=--max_old_space_size=28672"
-    - "cd source"
-    - "chmod +x ./run-all-tests.sh && ./run-all-tests.sh"
-  artifacts:
-    name: test-results
-    when: on_success
-    untracked: true
-  rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+    - if: $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
       when: always
     - when: never
 
 release:build-distributions:
   stage: pipeline
   needs:
-    - job: release:run-tests
+    - job: accelerator:build
       artifacts: true
+    - job: release:test:utils
+      artifacts: false
+    - job: unit-test:config
+      artifacts: false
+    - job: release:test:cdk-extensions
+      artifacts: false
+    - job: unit-test:constructs
+      artifacts: false
+    - job: unit-test:tools
+      artifacts: false
+    - job: unit-test:modules
+      artifacts: false
+    - job: unit-test:installer
+      artifacts: false
+    - job: unit-test:installer-container
+      artifacts: false
+    - job: unit-test:govcloud-account-vending
+      artifacts: false
+    - job: unit-test:accelerator
+      artifacts: false
+    - job: unit-test:aws-lza
+      artifacts: false
   tags:
     - arch:amd64
-    - size:xlarge
   variables:
+    KUBERNETES_CPU_REQUEST: "8"
+    KUBERNETES_CPU_LIMIT: "8"
+    KUBERNETES_MEMORY_REQUEST: "32Gi"
+    KUBERNETES_MEMORY_LIMIT: "32Gi"
     TEMPLATE_OUTPUT_BUCKET: "solutions-reference"
   before_script:
     - "apt-get update && apt-get install -y jq zip"
@@ -735,7 +1031,7 @@ release:build-distributions:
     when: on_success
     untracked: true
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
       when: always
     - when: never
 
@@ -744,9 +1040,13 @@ release:package-artifact:
   needs:
     - job: release:build-distributions
       artifacts: true
+  variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
   tags:
     - arch:amd64
-    - size:large
   before_script:
     - "apt-get update && apt-get install -y zip"
   script:
@@ -757,7 +1057,7 @@ release:package-artifact:
     paths:
       - artifact.zip
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
       when: always
     - when: never
 
@@ -768,8 +1068,11 @@ release:upload-to-cornerstone:
       artifacts: true
   tags:
     - arch:amd64
-    - size:large
   variables:
+    KUBERNETES_CPU_REQUEST: "4"
+    KUBERNETES_CPU_LIMIT: "4"
+    KUBERNETES_MEMORY_REQUEST: "16Gi"
+    KUBERNETES_MEMORY_LIMIT: "16Gi"
     AWS_DEFAULT_REGION: us-east-1
     AWS_CREDS_TARGET_ROLE: "${CORNERSTONE_ROLE_ARN}"
     CORNERSTONE_PACKAGE_BUCKET: "${CORNERSTONE_PACKAGE_BUCKET}"
@@ -783,9 +1086,9 @@ release:upload-to-cornerstone:
     - "export PUBLISHED_VERSION=$CI_COMMIT_TAG"
     - "cd .."
     - 'export AUTHOR_EMAIL=$(echo "$CI_COMMIT_AUTHOR" | grep -oP ''(?<=<).*(?=>)'' || echo "unknown")'
-    - aws s3 cp artifact.zip s3://$CORNERSTONE_PACKAGE_BUCKET/SO0199/$PUBLISHED_VERSION/$CI_COMMIT_SHA/artifact.zip --metadata "package=Landing-zone-accelerator-on-aws,commitId=$CI_COMMIT_SHA,solutionId=SO0199,solutionVersion=$PUBLISHED_VERSION,solutionName=landing-zone-accelerator-on-aws,commitauthor=$AUTHOR_EMAIL,publishpublicecrimage=false,commitmessage=$CI_COMMIT_MESSAGE,committimestamp=$CI_COMMIT_TIMESTAMP,enablequicksight=No,branch=$CI_COMMIT_MESSAGE"
+    - aws s3 cp artifact.zip s3://$CORNERSTONE_PACKAGE_BUCKET/SO0199/$PUBLISHED_VERSION/$CI_COMMIT_SHA/artifact.zip --metadata "package=Landing-zone-accelerator-on-aws,commitId=$CI_COMMIT_SHA,solutionId=SO0199,solutionVersion=$PUBLISHED_VERSION,solutionName=landing-zone-accelerator-on-aws,commitauthor=$AUTHOR_EMAIL,commitmessage=$CI_COMMIT_MESSAGE,committimestamp=$CI_COMMIT_TIMESTAMP,enablequicksight=No,branch=$CI_COMMIT_MESSAGE"
     - 'echo "Published solution archive to s3://$CORNERSTONE_PACKAGE_BUCKET/SO0199/$PUBLISHED_VERSION/$CI_COMMIT_SHA/artifact.zip"'
   rules:
-    - if: $CI_PROJECT_ID == "11925" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
+    - if: $CI_PROJECT_ID == "21753" && $CI_COMMIT_TAG =~ /v(\d.+){2}\d/
       when: always
     - when: never

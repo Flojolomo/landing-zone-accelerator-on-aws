@@ -21,7 +21,7 @@ import {
 } from '../../../interfaces/aws-ssm/get-parameters';
 import { createLogger } from '../../../common/logger';
 import { throttlingBackOff } from '../../../common/throttle';
-import { setRetryStrategy, getCredentials, getCurrentAccountDetails } from '../../../common/functions';
+import { setRetryStrategy, getCredentials, getCurrentAccountDetails, getStsEndpoint } from '../../../common/functions';
 import { MODULE_EXCEPTIONS } from '../../../common/enums';
 import { AssumeRoleCredentialType } from '../../../common/resources';
 
@@ -65,6 +65,7 @@ export class GetSsmParametersValueModule implements IGetSsmParametersValueModule
     if (validParameters.length > 0) {
       const stsClient = new STSClient({
         region: props.region,
+        endpoint: getStsEndpoint(props.partition, props.region),
         customUserAgent: props.solutionId,
         retryStrategy: setRetryStrategy(),
         credentials: props.credentials,
@@ -94,6 +95,9 @@ export class GetSsmParametersValueModule implements IGetSsmParametersValueModule
   private validateParameterConfiguration(parameter: IGetSsmParametersValueConfiguration): string | undefined {
     if (!parameter.name) {
       return `${MODULE_EXCEPTIONS.INVALID_INPUT}: Parameter name is required;`;
+    }
+    if (parameter.key !== undefined && !parameter.key) {
+      return `${MODULE_EXCEPTIONS.INVALID_INPUT}: Parameter "${parameter.name}" - Parameter key must not be empty;`;
     }
     return undefined;
   }
@@ -201,6 +205,7 @@ export class GetSsmParametersValueModule implements IGetSsmParametersValueModule
         batch.assumeRoleArn,
         props.solutionId,
         props.credentials,
+        props.sessionPolicy,
       );
 
       if (!client) continue;
@@ -234,7 +239,7 @@ export class GetSsmParametersValueModule implements IGetSsmParametersValueModule
       const { Name: name, Value: value } = response.Parameter ?? {};
 
       if (name && value) {
-        return { name, value, exists: true };
+        return { name: parameter.key ?? name, value, exists: true };
       }
 
       errors.push(
@@ -244,7 +249,7 @@ export class GetSsmParametersValueModule implements IGetSsmParametersValueModule
       return undefined;
     } catch (error) {
       if (error instanceof Error && error.name === 'ParameterNotFound') {
-        return { name: parameter.name, exists: false };
+        return { name: parameter.key ?? parameter.name, exists: false };
       }
 
       errors.push(
@@ -276,6 +281,7 @@ export class GetSsmParametersValueModule implements IGetSsmParametersValueModule
     assumeRoleArn?: string,
     solutionId?: string,
     credentials?: AssumeRoleCredentialType,
+    sessionPolicy?: string,
   ): Promise<SSMClient | undefined> {
     let assumedCredentials;
 
@@ -291,6 +297,8 @@ export class GetSsmParametersValueModule implements IGetSsmParametersValueModule
         region,
         solutionId,
         assumeRoleArn,
+        credentials,
+        sessionPolicy,
       });
     }
 

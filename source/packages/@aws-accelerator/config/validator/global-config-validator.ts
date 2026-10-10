@@ -197,6 +197,11 @@ export class GlobalConfigValidator {
     this.validateRegionByRegionDeployOrderMatchesEnabledRegionsConfiguration(values, regionByRegionDeployOrder, errors);
 
     //
+    // Validate enabledRegions contains no duplicates
+    //
+    this.validateNoDuplicateEnabledRegions(values, errors);
+
+    //
     // Validate Kinesis configuration
     //
     this.validateKinesisConfiguration(values.logging.cloudwatchLogs?.kinesis, errors);
@@ -353,10 +358,11 @@ export class GlobalConfigValidator {
   }
 
   /**
-   * Function to validate budget notification email address
+   * Function to validate budget notification subscriber addresses
    * @param values
    */
   private validateBudgetNotificationEmailIds(values: GlobalConfig, errors: string[]) {
+    const snsArnRegex = /^arn:.*:sns:.*:(.*):(.*)$/;
     for (const budget of values.reports?.budgets ?? []) {
       for (const notification of budget.notifications ?? []) {
         if (notification.subscriptionType === 'EMAIL') {
@@ -370,19 +376,18 @@ export class GlobalConfigValidator {
             errors.push(`Invalid report notification email ${notification.address!}.`);
           }
         } else if (notification.subscriptionType === 'SNS') {
-          const snsGetArnRegex = new RegExp('^arn:.*:sns:.*:(.*):(.*)$');
           if (Array.isArray(notification.recipients)) {
+            if (notification.recipients.length > 1) {
+              errors.push(
+                `SNS subscription type can have only one SNS topic as a recipient: ${notification.recipients}.`,
+              );
+            }
             for (const recipient of notification.recipients) {
-              if (!snsGetArnRegex.test(recipient)) {
+              if (!snsArnRegex.test(recipient)) {
                 errors.push(`The following SNS Topic Arn is malformatted: ${recipient}.`);
               }
-              if (notification.recipients.length > 1) {
-                errors.push(
-                  `SNS subscription type can have only one SNS topic as a recipient: ${notification.recipients}.`,
-                );
-              }
             }
-          } else if (!snsGetArnRegex.test(notification.address!)) {
+          } else if (!snsArnRegex.test(notification.address!)) {
             errors.push(`The following SNS Topic Arn is malformatted: ${notification.address}.`);
           }
         }
@@ -1240,12 +1245,56 @@ export class GlobalConfigValidator {
   }
 
   private validateControlTowerControls(values: GlobalConfig, errors: string[]) {
+    // Per the Control Tower control parameter reference, EnableControl rejects
+    // any parameter key outside this set:
+    // https://docs.aws.amazon.com/controltower/latest/controlreference/control-parameter-concepts.html
+    const knownParameterKeys = new Set([
+      'AllowedRegions',
+      'ExemptedActions',
+      'ExemptedPrincipalArns',
+      'ExemptedResourceArns',
+      'ExemptAssumeRoot',
+    ]);
+    // ExemptAssumeRoot is only valid for AWS-GR_RESTRICT_ROOT_USER and only accepts the value `true`.
+    const exemptAssumeRootControl = 'AWS-GR_RESTRICT_ROOT_USER';
+    const logger = createLogger(['global-config-validator-control-tower-controls']);
+
     for (const control of values.controlTower.controls ?? []) {
       // Check deploymentTargets does not contain accounts
       if (control.deploymentTargets?.accounts?.length > 0) {
         errors.push(
           `Control Tower controls can only be deployed to Organizational Units. Please remove all account deployment targets from ${control.identifier}`,
         );
+      }
+
+      for (const parameter of control.parameters ?? []) {
+        if (!knownParameterKeys.has(parameter.key)) {
+          logger.warn(
+            `Control Tower control ${control.identifier} has parameter key "${parameter.key}" which is not one of the known keys ` +
+              `(${[...knownParameterKeys].join(', ')}). The EnableControl API may reject unknown keys.`,
+          );
+        }
+
+        if (parameter.key === 'ExemptAssumeRoot') {
+          // Only flag misuse when the identifier is unambiguous. Skip opaque/regional IDs.
+          if (control.identifier.startsWith('AWS-GR_') && control.identifier !== exemptAssumeRootControl) {
+            logger.warn(
+              `Control Tower control ${control.identifier} sets ExemptAssumeRoot. ` +
+                `This parameter is only valid for ${exemptAssumeRootControl}.`,
+            );
+          }
+          const isTrueValue = (v: unknown): boolean =>
+            v === true || (typeof v === 'string' && v.toLowerCase() === 'true');
+          const valueIsTrue =
+            isTrueValue(parameter.value) ||
+            (Array.isArray(parameter.value) && parameter.value.length === 1 && isTrueValue(parameter.value[0]));
+          if (!valueIsTrue) {
+            logger.warn(
+              `Control Tower control ${control.identifier} sets ExemptAssumeRoot to a value other than \`true\`. ` +
+                `Per AWS documentation, ExemptAssumeRoot only accepts \`true\`; omit the parameter entirely to disable the exemption.`,
+            );
+          }
+        }
       }
     }
   }
@@ -1397,6 +1446,28 @@ export class GlobalConfigValidator {
       if (!deployOrder.includes(enabledRegion)) {
         errors.push(`Region ${enabledRegion} is missing in the region by region deploy order.`);
       }
+    }
+  }
+
+  /**
+   * Function to validate that enabledRegions does not contain duplicate regions.
+   * Duplicates cause LZA to detect spurious governed-region changes and trigger
+   * unnecessary Control Tower Landing Zone updates and OU re-registration.
+   */
+  private validateNoDuplicateEnabledRegions(values: GlobalConfig, errors: string[]) {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+    for (const region of values.enabledRegions ?? []) {
+      if (seen.has(region)) {
+        duplicates.add(region);
+      } else {
+        seen.add(region);
+      }
+    }
+    if (duplicates.size > 0) {
+      errors.push(
+        `Duplicate region(s) [${[...duplicates].join(',')}] found in enabledRegions. Each region must be listed only once.`,
+      );
     }
   }
 

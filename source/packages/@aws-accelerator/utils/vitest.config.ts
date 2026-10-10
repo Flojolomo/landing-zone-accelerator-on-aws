@@ -8,7 +8,7 @@ export default defineConfig({
     coverage: {
       exclude: ['**/*.d.ts', '**/dist/**', '**/node_modules/**'],
       thresholds: {
-        branches: 58,
+        branches: 63,
         functions: 68,
         lines: 70,
         statements: 70,

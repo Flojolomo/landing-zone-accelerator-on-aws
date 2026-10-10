@@ -748,14 +748,14 @@ export class SecurityResourcesStack extends AcceleratorStack {
 
     if (rule.customRule.triggeringResources.lookupType == 'ResourceId') {
       ruleScope = cdk.aws_config.RuleScope.fromResource(
-        cdk.aws_config.ResourceType.of(rule.customRule.triggeringResources.lookupKey),
+        cdk.aws_config.ResourceType.of(rule.customRule.triggeringResources.lookupKey!),
         rule.customRule.triggeringResources.lookupValue[0],
       );
     }
 
     if (rule.customRule.triggeringResources.lookupType == 'Tag') {
       ruleScope = cdk.aws_config.RuleScope.fromTag(
-        rule.customRule.triggeringResources.lookupKey,
+        rule.customRule.triggeringResources.lookupKey!,
         rule.customRule.triggeringResources.lookupValue[0],
       );
     }
@@ -782,9 +782,14 @@ export class SecurityResourcesStack extends AcceleratorStack {
     });
 
     // Read in the policy document which should be properly formatted json
-
-    /* eslint-disable-next-line @typescript-eslint/no-require-imports */
-    const policyDocument = require(path.join(this.props.configDirPath, rule.customRule.lambda.rolePolicyFile));
+    // Apply policy replacement variables (e.g. ${PARTITION}, ${ACCOUNT_ID}, ${REGION})
+    const policyDocument = JSON.parse(
+      this.generatePolicyReplacements(
+        path.join(this.props.configDirPath, rule.customRule.lambda.rolePolicyFile),
+        false,
+        this.organizationId,
+      ),
+    );
     // Create a statements list using the PolicyStatement factory
     const policyStatements: cdk.aws_iam.PolicyStatement[] = [];
     for (const statement of policyDocument.Statement) {
@@ -1112,7 +1117,7 @@ export class SecurityResourcesStack extends AcceleratorStack {
     assumeRoleArn?: string[],
     configFunctionName?: string,
   ): RemediationParameters | undefined {
-    if (!params) {
+    if (!params && !assumeRoleArn) {
       return undefined;
     }
 
@@ -1125,7 +1130,8 @@ export class SecurityResourcesStack extends AcceleratorStack {
       };
     }
 
-    for (const param of params) {
+    // params may be undefined when only assumeRoleArn is provided.
+    for (const param of params ?? []) {
       let parameterName: string | undefined;
       let parameterValue: string | undefined;
       let parameterType = 'List';
@@ -1362,9 +1368,8 @@ export class SecurityResourcesStack extends AcceleratorStack {
     isLambdaRole = false,
   ): cdk.aws_iam.IRole {
     // Read in the policy document which should be properly formatted json
-
-    /* eslint-disable-next-line @typescript-eslint/no-require-imports */
-    const policyDocument = require(policyFilePath);
+    // Apply policy replacement variables (e.g. ${PARTITION}, ${ACCOUNT_ID}, ${REGION})
+    const policyDocument = JSON.parse(this.generatePolicyReplacements(policyFilePath, false, this.organizationId));
     // Create a statements list using the PolicyStatement factory
     const policyStatements: cdk.aws_iam.PolicyStatement[] = [];
     for (const statement of policyDocument.Statement) {

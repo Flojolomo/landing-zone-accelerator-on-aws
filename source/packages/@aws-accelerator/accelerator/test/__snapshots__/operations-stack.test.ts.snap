@@ -195,7 +195,10 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
               "Resource": "arn:aws:ssm:*:111111111111:parameter/*",
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": {
                 "Ref": "SsmParameterValueacceleratorassetskmskeyC96584B6F00A464EAD1953AFF4B05118Parameter",
@@ -488,7 +491,7 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -685,7 +688,7 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -924,6 +927,52 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
       },
       "Type": "AWS::IAM::InstanceProfile",
     },
+    "LzaAssumeCondTestRole13D53714": {
+      "Metadata": {
+        "cdk_nag": {
+          "rules_to_suppress": [
+            {
+              "id": "AwsSolutions-IAM4",
+              "reason": "IAM Role created as per accelerator iam-config needs AWS managed policy",
+            },
+          ],
+        },
+      },
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "sts:ExternalId": [
+                    "my-test-external-id",
+                  ],
+                },
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition",
+                      },
+                      ":iam::222222222222:root",
+                    ],
+                  ],
+                },
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "RoleName": "LzaAssumeCondTestRole",
+      },
+      "Type": "AWS::IAM::Role",
+    },
     "NetworkSecurityRoleC82A0DA7": {
       "Metadata": {
         "cdk_nag": {
@@ -942,7 +991,9 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
               "Action": "sts:AssumeRole",
               "Condition": {
                 "StringEquals": {
-                  "sts:ExternalId": "111122223333",
+                  "sts:ExternalId": [
+                    "111122223333",
+                  ],
                 },
               },
               "Effect": "Allow",
@@ -1128,11 +1179,14 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
       "Properties": {
         "Name": "/accelerator/AWSAccelerator-OperationsStack-111111111111-us-east-1/version",
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
     "SsmParamAdministratorsGroupArn1018D83B": {
+      "DependsOn": [
+        "SsmParamNetworkSecurityRoleRoleArn068849A7",
+      ],
       "Properties": {
         "Name": "/accelerator/iam/group/Administrators/arn",
         "Type": "String",
@@ -1160,7 +1214,7 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
     },
     "SsmParamBreakGlassUser01UserArn935D8C01": {
       "DependsOn": [
-        "SsmParamAdministratorsGroupArn1018D83B",
+        "SsmParamNetworkSecurityRoleRoleArn068849A7",
       ],
       "Properties": {
         "Name": "/accelerator/iam/user/breakGlassUser01/arn",
@@ -1176,7 +1230,7 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
     },
     "SsmParamBreakGlassUser02UserArnB4B8C9E3": {
       "DependsOn": [
-        "SsmParamAdministratorsGroupArn1018D83B",
+        "SsmParamNetworkSecurityRoleRoleArn068849A7",
       ],
       "Properties": {
         "Name": "/accelerator/iam/user/breakGlassUser02/arn",
@@ -1213,6 +1267,19 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
       },
       "Type": "AWS::SSM::Parameter",
     },
+    "SsmParamLzaAssumeCondTestRoleRoleArnEA42985D": {
+      "Properties": {
+        "Name": "/accelerator/iam/role/LzaAssumeCondTestRole/arn",
+        "Type": "String",
+        "Value": {
+          "Fn::GetAtt": [
+            "LzaAssumeCondTestRole13D53714",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "AWS::SSM::Parameter",
+    },
     "SsmParamNetworkSecurityRoleRoleArn068849A7": {
       "Properties": {
         "Name": "/accelerator/iam/role/Network-Security-Role/arn",
@@ -1228,7 +1295,7 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
     },
     "SsmParamNoConsoleUser01UserArn99E76B42": {
       "DependsOn": [
-        "SsmParamAdministratorsGroupArn1018D83B",
+        "SsmParamNetworkSecurityRoleRoleArn068849A7",
       ],
       "Properties": {
         "Name": "/accelerator/iam/user/noConsoleUser01/arn",
@@ -1398,6 +1465,7 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": {
@@ -1406,7 +1474,10 @@ exports[`OperationsStack > Construct(OperationsStack):  Snapshot Test 1`] = `
               "Sid": "S3CentralLogsEncryption",
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Condition": {
                 "ForAllValues:StringLike": {
                   "kms:ResourceAliases": [

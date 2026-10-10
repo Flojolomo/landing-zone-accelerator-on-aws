@@ -268,7 +268,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 1`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -1821,8 +1821,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 1`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -1997,7 +1997,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -2041,6 +2041,109 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -2399,6 +2502,72 @@ phases:
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
     },
     "SecureBucket747CD8C0": {
       "DeletionPolicy": "RetainExceptOnCreate",
@@ -2926,7 +3095,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -3389,7 +3558,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -4218,7 +4390,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 2`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -5761,8 +5933,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 2`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -5937,7 +6109,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -5981,6 +6153,109 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -6339,6 +6614,72 @@ phases:
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
     },
     "SecureBucket747CD8C0": {
       "DeletionPolicy": "RetainExceptOnCreate",
@@ -6866,7 +7207,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -7329,7 +7670,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -8191,7 +8535,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 3`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -9767,8 +10111,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 3`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -9940,7 +10284,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -9978,6 +10322,97 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -10359,6 +10794,66 @@ phases:
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
     },
     "SecureBucket747CD8C0": {
       "DeletionPolicy": "RetainExceptOnCreate",
@@ -10872,7 +11367,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -11327,7 +11822,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -12180,7 +12678,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 4`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -13746,8 +14244,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 4`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -13919,7 +14417,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -13957,6 +14455,97 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -14338,6 +14927,66 @@ phases:
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
     },
     "SecureBucket747CD8C0": {
       "DeletionPolicy": "RetainExceptOnCreate",
@@ -14851,7 +15500,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -15306,7 +15955,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -16159,7 +16811,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 5`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -17730,8 +18382,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 5`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -17903,7 +18555,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -17941,6 +18593,97 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -18322,6 +19065,66 @@ phases:
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "AcceleratorQualifier",
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Ref": "AcceleratorQualifier",
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
     },
     "SecureBucket747CD8C0": {
       "DeletionPolicy": "RetainExceptOnCreate",
@@ -18835,7 +19638,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -19290,7 +20093,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -20122,7 +20928,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 6`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -21672,8 +22478,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 6`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -21848,7 +22654,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -21892,6 +22698,109 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -22250,6 +23159,72 @@ phases:
         ],
       },
       "Type": "AWS::IAM::Policy",
+    },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
     },
     "SecureBucket747CD8C0": {
       "DeletionPolicy": "RetainExceptOnCreate",
@@ -22777,7 +23752,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -23240,7 +24215,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -24090,7 +25068,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 7`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -24104,7 +25082,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 7`] = `
       "Type": "String",
     },
     "RepositoryBucketObject": {
-      "Default": "release/v1.15.5.zip",
+      "Default": "release/v1.16.3.zip",
       "Description": "The full path to the accelerator code zip S3 Object. (S3 Only)",
       "Type": "String",
     },
@@ -25669,8 +26647,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 7`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -25845,7 +26823,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -25889,6 +26867,109 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -26248,6 +27329,72 @@ phases:
       },
       "Type": "AWS::IAM::Policy",
     },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
     "S3Pipeline01611002": {
       "Condition": "UseS3Condition",
       "DependsOn": [
@@ -26415,6 +27562,7 @@ phases:
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "arn:aws:kms:us-east-1:000000000000:key/aaaaaaaa-1111-bbbb-2222-cccccc333333",
@@ -27127,7 +28275,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -27590,7 +28738,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -28455,7 +29606,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 8`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -28469,7 +29620,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 8`] = `
       "Type": "String",
     },
     "RepositoryBucketObject": {
-      "Default": "release/v1.15.5.zip",
+      "Default": "release/v1.16.3.zip",
       "Description": "The full path to the accelerator code zip S3 Object. (S3 Only)",
       "Type": "String",
     },
@@ -30041,8 +31192,8 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 8`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: "22"
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/22.*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js 22.x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -30217,7 +31368,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -30261,6 +31412,109 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -30620,6 +31874,72 @@ phases:
       },
       "Type": "AWS::IAM::Policy",
     },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
     "S3Pipeline01611002": {
       "Condition": "UseS3Condition",
       "DependsOn": [
@@ -30787,6 +32107,7 @@ phases:
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "arn:aws:kms:us-east-1:000000000000:key/aaaaaaaa-1111-bbbb-2222-cccccc333333",
@@ -31499,7 +32820,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -31962,7 +33283,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },
@@ -32851,7 +34175,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 9`] = `
     "RepositoryBranchName": {
       "AllowedPattern": ".+",
       "ConstraintDescription": "The repository branch name must not be empty",
-      "Default": "release/v1.15.5",
+      "Default": "release/v1.16.3",
       "Description": "The name of the git branch to use for installation. To determine the branch name, navigate to the Landing Zone Accelerator GitHub branches page and choose the release branch you would like to deploy. Release branch names will align with the semantic versioning of our GitHub releases. New release branches will be available as the open source project is updated with new features.",
       "Type": "String",
     },
@@ -32865,7 +34189,7 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 9`] = `
       "Type": "String",
     },
     "RepositoryBucketObject": {
-      "Default": "release/v1.15.5.zip",
+      "Default": "release/v1.16.3.zip",
       "Description": "The full path to the accelerator code zip S3 Object. (S3 Only)",
       "Type": "String",
     },
@@ -34437,12 +35761,16 @@ exports[`InstallerStack > Stack(installer):  Snapshot Test 9`] = `
                 "version: "0.2"
 phases:
   install:
-    runtime-versions:
-      nodejs: ",
+    commands:
+      - 'NODE_BIN="$(ls -d /usr/local/n/versions/node/",
                 {
                   "Ref": "AcceleratorNodeVersion",
                 },
-                "
+                ".*/bin 2>/dev/null | sort -V | tail -1)" && if [ -z "$NODE_BIN" ]; then echo "ERROR: Node.js ",
+                {
+                  "Ref": "AcceleratorNodeVersion",
+                },
+                ".x is not pre-installed in this CodeBuild image" >&2; exit 1; fi && export PATH="$NODE_BIN:$PATH" && node --version'
   pre_build:
     commands:
       - ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
@@ -34617,7 +35945,7 @@ phases:
                 {
                   "Ref": "AWS::Region",
                 },
-                "/lza/v1.15.5.zip --region ",
+                "/lza/v1.16.3.zip --region ",
                 {
                   "Ref": "AWS::Region",
                 },
@@ -34661,6 +35989,109 @@ phases:
         ],
       },
       "Type": "AWS::CodeBuild::Project",
+    },
+    "ModuleStateTable930C8620": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-State-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true,
+        },
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
+    "ModuleVerboseLogsGroup1FFBAC09": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Module-Verbose-Logs",
+            ],
+          ],
+        },
+        "RetentionInDays": 30,
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::Logs::LogGroup",
+      "UpdateReplacePolicy": "Retain",
     },
     "ResourceNamePrefixesGetPrefixResource96A10E6E": {
       "DeletionPolicy": "Delete",
@@ -35031,6 +36462,72 @@ phases:
       },
       "Type": "AWS::IAM::Policy",
     },
+    "ResourceRetentionTableD1686E62": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "PK",
+            "AttributeType": "S",
+          },
+          {
+            "AttributeName": "SK",
+            "AttributeType": "S",
+          },
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "PK",
+            "KeyType": "HASH",
+          },
+          {
+            "AttributeName": "SK",
+            "KeyType": "RANGE",
+          },
+        ],
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+        },
+        "SSESpecification": {
+          "SSEEnabled": true,
+        },
+        "TableName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Fn::GetAtt": [
+                  "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                  "acceleratorPrefix",
+                ],
+              },
+              "-Resource-Retention-",
+              {
+                "Ref": "AWS::AccountId",
+              },
+              "-",
+              {
+                "Ref": "AWS::Region",
+              },
+            ],
+          ],
+        },
+        "Tags": [
+          {
+            "Key": "Accelerator",
+            "Value": {
+              "Fn::GetAtt": [
+                "ResourceNamePrefixesGetPrefixResource96A10E6E",
+                "acceleratorPrefix",
+              ],
+            },
+          },
+        ],
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain",
+    },
     "S3Pipeline01611002": {
       "Condition": "UseS3Condition",
       "DependsOn": [
@@ -35198,6 +36695,7 @@ phases:
               "Action": [
                 "kms:Decrypt",
                 "kms:GenerateDataKey",
+                "kms:DescribeKey",
               ],
               "Effect": "Allow",
               "Resource": "arn:aws:kms:us-east-1:000000000000:key/aaaaaaaa-1111-bbbb-2222-cccccc333333",
@@ -35921,7 +37419,7 @@ phases:
           },
         },
         "Type": "String",
-        "Value": "1.15.5",
+        "Value": "1.16.3",
       },
       "Type": "AWS::SSM::Parameter",
     },
@@ -36395,7 +37893,10 @@ async function updatePipelineDetailsForBothPipelines(secretValue) {
               },
             },
             {
-              "Action": "kms:Decrypt",
+              "Action": [
+                "kms:Decrypt",
+                "kms:DescribeKey",
+              ],
               "Effect": "Allow",
               "Resource": "*",
             },

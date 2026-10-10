@@ -19,12 +19,13 @@ import * as path from 'path';
 
 import { Bucket, BucketEncryptionType, S3LifeCycleRule } from '@aws-accelerator/constructs';
 
-import { version, config } from '../../../../package.json';
+import { addAcceleratorTags } from '@aws-accelerator/cdk-utils';
+import { LzaLambdaRuntime } from '@aws-accelerator/utils/lib/lambda';
+import { getNodeRuntimeActivationCommand } from '@aws-accelerator/utils/lib/common-functions';
+import { config, version } from '../../../../package.json';
 import { ResourceNamePrefixes } from './resource-name-prefixes';
 import { SolutionHelper } from './solutions-helper';
 import { Validate } from './validate';
-import { LzaLambdaRuntime } from '@aws-accelerator/utils/lib/lambda';
-import { addAcceleratorTags } from '@aws-accelerator/cdk-utils';
 
 export enum RepositorySources {
   GITHUB = 'github',
@@ -627,6 +628,13 @@ export class InstallerStack extends cdk.Stack {
       cdk.Stack.of(this).account
     }:role/${acceleratorPrefix}-*`;
 
+    // Module infrastructure resource names (DynamoDB tables + log group)
+    // Uses qualifier for external pipeline, acceleratorPrefix for standard
+    let moduleResourcePrefix = acceleratorPrefix;
+    let moduleStateTableName = `${moduleResourcePrefix}-Module-State-${cdk.Aws.ACCOUNT_ID}-${cdk.Aws.REGION}`;
+    let resourceRetentionTableName = `${moduleResourcePrefix}-Resource-Retention-${cdk.Aws.ACCOUNT_ID}-${cdk.Aws.REGION}`;
+    let moduleVerboseLogsGroupName = `${moduleResourcePrefix}-Module-Verbose-Logs`;
+
     if (props.useExternalPipelineAccount) {
       //
       // Change the variable to use qualifier
@@ -655,6 +663,10 @@ export class InstallerStack extends cdk.Stack {
       acceleratorPrincipalArn = `arn:${cdk.Stack.of(this).partition}:iam::${cdk.Stack.of(this).account}:role/${
         this.acceleratorQualifier!.valueAsString
       }-*`;
+      moduleResourcePrefix = this.acceleratorQualifier!.valueAsString;
+      moduleStateTableName = `${moduleResourcePrefix}-Module-State-${cdk.Aws.ACCOUNT_ID}-${cdk.Aws.REGION}`;
+      resourceRetentionTableName = `${moduleResourcePrefix}-Resource-Retention-${cdk.Aws.ACCOUNT_ID}-${cdk.Aws.REGION}`;
+      moduleVerboseLogsGroupName = `${moduleResourcePrefix}-Module-Verbose-Logs`;
     }
 
     // Validate Installer Parameters with CFN Rule Assertions
@@ -865,6 +877,44 @@ export class InstallerStack extends cdk.Stack {
       simpleName: false,
     });
 
+    // =========================================================================
+    // Module Infrastructure Resources (DynamoDB tables + CloudWatch log group)
+    // These support module execution state tracking and verbose logging.
+    // =========================================================================
+
+    // Module State Table — tracks module execution state (config hash, status, timestamp)
+    const moduleStateTable = new cdk.aws_dynamodb.Table(this, 'ModuleStateTable', {
+      tableName: moduleStateTableName,
+      partitionKey: { name: 'PK', type: cdk.aws_dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: cdk.aws_dynamodb.AttributeType.STRING },
+      billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: cdk.aws_dynamodb.TableEncryption.AWS_MANAGED,
+      pointInTimeRecovery: true,
+      timeToLiveAttribute: 'ttl',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    cdk.Tags.of(moduleStateTable).add('Accelerator', moduleResourcePrefix);
+
+    // Resource Retention Table — tracks retained CloudFormation custom resources
+    const resourceRetentionTable = new cdk.aws_dynamodb.Table(this, 'ResourceRetentionTable', {
+      tableName: resourceRetentionTableName,
+      partitionKey: { name: 'PK', type: cdk.aws_dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: cdk.aws_dynamodb.AttributeType.STRING },
+      billingMode: cdk.aws_dynamodb.BillingMode.PAY_PER_REQUEST,
+      encryption: cdk.aws_dynamodb.TableEncryption.AWS_MANAGED,
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    cdk.Tags.of(resourceRetentionTable).add('Accelerator', moduleResourcePrefix);
+
+    // Verbose Logs Group — detailed module execution logs for troubleshooting
+    const moduleVerboseLogsGroup = new cdk.aws_logs.LogGroup(this, 'ModuleVerboseLogsGroup', {
+      logGroupName: moduleVerboseLogsGroupName,
+      retention: cdk.aws_logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    cdk.Tags.of(moduleVerboseLogsGroup).add('Accelerator', moduleResourcePrefix);
+
     const installerServerAccessLogsBucket = new Bucket(this, 'InstallerAccessLogsBucket', {
       encryptionType: BucketEncryptionType.SSE_S3, // Server access logging does not support SSE-KMS
       s3BucketName: installerAccessLogsBucketName,
@@ -978,9 +1028,11 @@ export class InstallerStack extends cdk.Stack {
         version: '0.2',
         phases: {
           install: {
-            'runtime-versions': {
-              nodejs: nodeVersion,
-            },
+            // Activate the pre-baked Node.js runtime via PATH instead of CodeBuild's
+            // `runtime-versions` selector (~60s per build for a non-default major).
+            // `nodeVersion` may be a CloudFormation token; the command is brace-free so it
+            // stays Fn::Sub-safe. See getNodeRuntimeActivationCommand.
+            commands: [getNodeRuntimeActivationCommand(nodeVersion)],
           },
           pre_build: {
             commands: [
@@ -1318,7 +1370,7 @@ export class InstallerStack extends cdk.Stack {
           resources: [`${secretIdPrefix}*`],
         }),
         new cdk.aws_iam.PolicyStatement({
-          actions: ['kms:Decrypt'],
+          actions: ['kms:Decrypt', 'kms:DescribeKey'],
           resources: ['*'],
         }),
         new cdk.aws_iam.PolicyStatement({
@@ -1438,7 +1490,7 @@ export class InstallerStack extends cdk.Stack {
       if (props.s3SourceKmsKeyArn) {
         s3PipelineRole.addToPolicy(
           new cdk.aws_iam.PolicyStatement({
-            actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+            actions: ['kms:Decrypt', 'kms:GenerateDataKey', 'kms:DescribeKey'],
             resources: [props.s3SourceKmsKeyArn],
           }),
         );

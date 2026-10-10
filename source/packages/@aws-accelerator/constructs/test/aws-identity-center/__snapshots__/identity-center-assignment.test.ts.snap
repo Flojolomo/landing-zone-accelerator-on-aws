@@ -51,7 +51,7 @@ exports[`IdentityCenterAssignments > Construct(IdentityCenterGetInstanceId):  Sn
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -123,6 +123,8 @@ exports[`IdentityCenterAssignments > Construct(IdentityCenterGetInstanceId):  Sn
                     "identitystore:GetUserId",
                     "sso:CreateAccountAssignment",
                     "sso:DeleteAccountAssignment",
+                    "sso:DescribeAccountAssignmentCreationStatus",
+                    "sso:DescribeAccountAssignmentDeletionStatus",
                     "sso:ListAccountAssignments",
                   ],
                   "Effect": "Allow",

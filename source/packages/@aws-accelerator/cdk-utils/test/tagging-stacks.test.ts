@@ -146,6 +146,16 @@ describe('ACCELERATOR_ENABLE_TAG env variable', () => {
 
 describe('CustomResourceProvider tagging', () => {
   const handlerDir = path.join(__dirname, 'handler');
+  const handlerFile = path.join(handlerDir, 'index.js');
+
+  beforeAll(() => {
+    fs.mkdirSync(handlerDir, { recursive: true });
+    fs.writeFileSync(handlerFile, 'exports.handler = async () => ({ Status: "SUCCESS" });');
+  });
+
+  afterAll(() => {
+    fs.rmSync(handlerDir, { recursive: true, force: true });
+  });
 
   beforeAll(() => {
     fs.mkdirSync(handlerDir, { recursive: true });

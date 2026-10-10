@@ -17,6 +17,7 @@ import * as path from 'path';
 
 import {
   AseaResourceType,
+  AssumedByConfig,
   Ec2FirewallAutoScalingGroupConfig,
   Ec2FirewallConfig,
   Ec2FirewallInstanceConfig,
@@ -273,8 +274,12 @@ export class OperationsStack extends AcceleratorStack {
             kmsKey: this.cloudwatchKey,
             logRetentionInDays: this.props.globalConfig.cloudwatchLogRetentionInDays,
           });
-          // Non-specified Regions apply to home region
-        } else if (!limit.regions && this.isHomeRegion(this.props.globalConfig.homeRegion)) {
+          // Non-specified Regions apply to home region (global services are handled above and must only be requested in the global region)
+        } else if (
+          !limit.regions &&
+          !globalServices.includes(limit.serviceCode) &&
+          this.isHomeRegion(this.props.globalConfig.homeRegion)
+        ) {
           this.logger.info(
             `Regions property not specified, creating service quota increase ${limit.quotaCode} in home region`,
           );
@@ -373,67 +378,107 @@ export class OperationsStack extends AcceleratorStack {
   }
 
   /**
-   * Generates the list of role principals for the provided roleItem
+   * Generates the role principal for a single assumedBy entry.
    *
-   * @param roleItem
-   * @returns List of cdk.aws_iam.PrincipalBase
+   * @param assumedByItem
+   * @returns cdk.aws_iam.PrincipalBase
    */
-  private getRolePrincipals(roleItem: RoleConfig): cdk.aws_iam.PrincipalBase[] {
-    const principals: cdk.aws_iam.PrincipalBase[] = [];
-
-    for (const assumedByItem of roleItem.assumedBy ?? []) {
-      this.logger.info(`Role - assumed by type(${assumedByItem.type}) principal(${assumedByItem.principal})`);
-
-      switch (assumedByItem.type) {
-        case 'service':
-          principals.push(new cdk.aws_iam.ServicePrincipal(assumedByItem.principal));
-          break;
-        case 'account':
-          const partition = this.props.partition;
-          const accountIdRegex = /^\d{12}$/;
-          const accountArnRegex = new RegExp('^arn:' + partition + ':iam::(\\d{12}):root$');
-
-          // test if principal length exceeds IAM Role length limit of 2048 characters.
-          // Ref: https://docs.aws.amazon.com/IAM/latest/APIReference/API_Role.html
-          // this will mitigate polynomial regular expression used on uncontrolled data
-          if (assumedByItem.principal!.length > 2048) {
-            throw new Error(`The principal defined in arn ${assumedByItem.principal} is too long`);
-          }
-          if (accountIdRegex.test(assumedByItem.principal)) {
-            principals.push(new cdk.aws_iam.AccountPrincipal(assumedByItem.principal));
-          } else if (accountArnRegex.test(assumedByItem.principal)) {
-            const accountId = accountArnRegex.exec(assumedByItem.principal);
-            principals.push(new cdk.aws_iam.AccountPrincipal(accountId![1]));
-          } else {
-            principals.push(
-              new cdk.aws_iam.AccountPrincipal(this.props.accountsConfig.getAccountId(assumedByItem.principal)),
-            );
-          }
-          break;
-        case 'provider':
-          // workaround due to https://github.com/aws/aws-cdk/issues/22091
-          if (this.props.partition === 'aws-cn') {
-            principals.push(
-              new cdk.aws_iam.FederatedPrincipal(
-                this.providers[assumedByItem.principal].samlProviderArn,
-                {
-                  StringEquals: {
-                    'SAML:aud': 'https://signin.amazonaws.cn/saml',
-                  },
-                },
-                'sts:AssumeRoleWithSAML',
-              ),
-            );
-          } else {
-            principals.push(new cdk.aws_iam.SamlConsolePrincipal(this.providers[assumedByItem.principal]));
-          }
-          break;
-        case 'principalArn':
-          principals.push(new cdk.aws_iam.ArnPrincipal(assumedByItem.principal));
-      }
+  private getAssumeRolePrincipal(roleItem: RoleConfig, assumedByItem: AssumedByConfig): cdk.aws_iam.PrincipalBase {
+    if (!assumedByItem.principal) {
+      this.logger.error(
+        `Missing assumedBy.principal for role "${roleItem.name}" (assumedBy.type="${assumedByItem.type}"). ` +
+          `Update iam-config.yaml at roleSets[].roles[name="${roleItem.name}"].assumedBy[].principal.`,
+      );
+      throw new Error('assumedBy principal is required for AssumeRole');
     }
 
-    return principals;
+    this.logger.info(`Role - assumed by type(${assumedByItem.type}) principal(${assumedByItem.principal})`);
+
+    switch (assumedByItem.type) {
+      case 'service':
+        return new cdk.aws_iam.ServicePrincipal(assumedByItem.principal!);
+
+      case 'account': {
+        const partition = this.props.partition;
+        const accountIdRegex = /^\d{12}$/;
+        const accountArnRegex = new RegExp('^arn:' + partition + ':iam::(\\d{12}):root$');
+
+        // test if principal length exceeds IAM Role length limit of 2048 characters.
+        // Ref: https://docs.aws.amazon.com/IAM/latest/APIReference/API_Role.html
+        // this will mitigate polynomial regular expression used on uncontrolled data
+        if (assumedByItem.principal!.length > 2048) {
+          throw new Error(`The principal defined in arn ${assumedByItem.principal} is too long`);
+        }
+
+        if (accountIdRegex.test(assumedByItem.principal!)) {
+          return new cdk.aws_iam.AccountPrincipal(assumedByItem.principal!);
+        } else if (accountArnRegex.test(assumedByItem.principal!)) {
+          const accountId = accountArnRegex.exec(assumedByItem.principal!);
+          return new cdk.aws_iam.AccountPrincipal(accountId![1]);
+        } else {
+          return new cdk.aws_iam.AccountPrincipal(this.props.accountsConfig.getAccountId(assumedByItem.principal!));
+        }
+      }
+
+      case 'provider':
+        // workaround due to https://github.com/aws/aws-cdk/issues/22091
+        if (this.props.partition === 'aws-cn') {
+          return new cdk.aws_iam.FederatedPrincipal(
+            this.providers[assumedByItem.principal!].samlProviderArn,
+            {
+              StringEquals: {
+                'SAML:aud': 'https://signin.amazonaws.cn/saml',
+              },
+            },
+            'sts:AssumeRoleWithSAML',
+          );
+        }
+        return new cdk.aws_iam.SamlConsolePrincipal(this.providers[assumedByItem.principal!]);
+
+      case 'principalArn':
+        return new cdk.aws_iam.ArnPrincipal(assumedByItem.principal!);
+
+      default:
+        this.logger.error(
+          `Invalid assumedBy.type "${assumedByItem.type}" for role "${roleItem.name}". ` +
+            `Update iam-config.yaml at roleSets[].roles[name="${roleItem.name}"].assumedBy[].type. ` +
+            `assumedBy.principal="${assumedByItem.principal ?? ''}".`,
+        );
+        throw new Error(`Unsupported assumedBy type: ${assumedByItem.type}`);
+    }
+  }
+
+  private mergeAssumeRoleCondition(
+    conditions: { [operator: string]: { [key: string]: string[] } },
+    operator: string,
+    key: string,
+    values: string[],
+  ) {
+    const operatorMap = (conditions[operator] ??= {});
+
+    const existingValues = (operatorMap[key] as string[] | undefined) ?? [];
+    const mergedValues = [...new Set([...existingValues, ...values])];
+
+    operatorMap[key] = mergedValues;
+  }
+
+  private getAssumeRoleConditions(
+    roleItem: RoleConfig,
+    assumedByItem: AssumedByConfig,
+  ): { [operator: string]: { [key: string]: string[] } } | undefined {
+    const conditions: { [operator: string]: { [key: string]: string[] } } = {};
+
+    // backward compatibility: roleItem.externalIds (role-level) should continue to work for account/ARN principals
+    if (roleItem.externalIds?.length && (assumedByItem.type === 'account' || assumedByItem.type === 'principalArn')) {
+      this.mergeAssumeRoleCondition(conditions, 'StringEquals', 'sts:ExternalId', roleItem.externalIds);
+    }
+
+    // per-principal assumedBy conditions
+    for (const conditionItem of assumedByItem.conditions ?? []) {
+      this.mergeAssumeRoleCondition(conditions, conditionItem.type, conditionItem.key, conditionItem.values);
+    }
+
+    return Object.keys(conditions).length ? conditions : undefined;
   }
 
   /**
@@ -474,30 +519,54 @@ export class OperationsStack extends AcceleratorStack {
    * @returns role {@link cdk.aws_iam.Role}
    */
   private createRole(roleItem: RoleConfig, roleSetItem: RoleSetConfig): cdk.aws_iam.Role {
-    const principals = this.getRolePrincipals(roleItem);
+    const assumedByItems = roleItem.assumedBy ?? [];
+    if (assumedByItems.length === 0) {
+      this.logger.error(`No assumedBy principals defined for role ${roleItem.name}`);
+      throw new Error(`Configuration validation failed at runtime.`);
+    }
+
+    // Preserve existing behavior: provider principal must be alone (historic CDK limitation with CompositePrincipal).
+    // Even though we now emit multiple statements, keeping this restriction avoids unexpected behavior changes.
+    if (assumedByItems.some(item => item.type === 'provider') && assumedByItems.length > 1) {
+      this.logger.error('More than one principal found when adding provider');
+      throw new Error(`Configuration validation failed at runtime.`);
+    }
+
     const managedPolicies = this.getManagedPolicies(roleItem);
-    let assumedBy: cdk.aws_iam.IPrincipal;
-    if (roleItem.assumedBy.find(item => item.type === 'provider')) {
-      // Since a SamlConsolePrincipal creates conditions, we can not
-      // use the CompositePrincipal. Verify that it is alone
-      if (principals.length > 1) {
-        this.logger.error('More than one principal found when adding provider');
-        throw new Error(`Configuration validation failed at runtime.`);
-      }
-      assumedBy = principals[0];
-    } else {
-      assumedBy = new cdk.aws_iam.CompositePrincipal(...principals);
+
+    // Build one assume-role statement per assumedBy entry to support per-principal conditions
+    const assumeStatements = assumedByItems.map(item => ({
+      principal: this.getAssumeRolePrincipal(roleItem, item),
+      action: item.type === 'provider' ? 'sts:AssumeRoleWithSAML' : 'sts:AssumeRole',
+      conditions: this.getAssumeRoleConditions(roleItem, item),
+    }));
+
+    let assumedBy: cdk.aws_iam.IPrincipal = assumeStatements[0].principal;
+    const firstConditions = assumeStatements[0].conditions;
+    if (firstConditions) {
+      assumedBy = new cdk.aws_iam.PrincipalWithConditions(assumedBy, firstConditions);
     }
 
     const role = new cdk.aws_iam.Role(this, pascalCase(roleItem.name), {
       roleName: roleItem.name,
-      externalIds: roleItem.externalIds,
       assumedBy,
       managedPolicies,
       path: roleSetItem.path,
       permissionsBoundary: this.policies[roleItem.boundaryPolicy],
       maxSessionDuration: roleItem.maxSessionDuration ? cdk.Duration.seconds(roleItem.maxSessionDuration) : undefined,
     });
+
+    // Append remaining principals as separate policy statements (supports per-principal conditions)
+    for (const statement of assumeStatements.slice(1)) {
+      const statementProps: cdk.aws_iam.PolicyStatementProps = {
+        effect: cdk.aws_iam.Effect.ALLOW,
+        actions: [statement.action],
+        principals: [statement.principal],
+        ...(statement.conditions ? { conditions: statement.conditions } : {}),
+      };
+
+      role.assumeRolePolicy?.addStatements(new cdk.aws_iam.PolicyStatement(statementProps));
+    }
 
     // AwsSolutions-IAM4: The IAM user, role, or group uses AWS managed policies
     // rule suppression with evidence for this permission.
@@ -1072,7 +1141,7 @@ export class OperationsStack extends AcceleratorStack {
       assetsAccessRole.addToPolicy(
         new cdk.aws_iam.PolicyStatement({
           resources: [key.keyArn],
-          actions: ['kms:Decrypt'],
+          actions: ['kms:Decrypt', 'kms:DescribeKey'],
         }),
       );
     } else if (
@@ -1091,14 +1160,14 @@ export class OperationsStack extends AcceleratorStack {
       assetsAccessRole.addToPolicy(
         new cdk.aws_iam.PolicyStatement({
           resources: [key.keyArn],
-          actions: ['kms:Decrypt'],
+          actions: ['kms:Decrypt', 'kms:DescribeKey'],
         }),
       );
     } else {
       assetsAccessRole.addToPolicy(
         new cdk.aws_iam.PolicyStatement({
           resources: [assetBucketKmsKey.keyArn],
-          actions: ['kms:Decrypt'],
+          actions: ['kms:Decrypt', 'kms:DescribeKey'],
         }),
       );
     }
@@ -1295,7 +1364,7 @@ export class OperationsStack extends AcceleratorStack {
         }),
         new cdk.aws_iam.PolicyStatement({
           effect: cdk.aws_iam.Effect.ALLOW,
-          actions: ['kms:Decrypt'],
+          actions: ['kms:Decrypt', 'kms:DescribeKey'],
           resources: [assetBucketKmsKey.keyArn],
         }),
         new cdk.aws_iam.PolicyStatement({
@@ -1317,7 +1386,7 @@ export class OperationsStack extends AcceleratorStack {
         }),
         new cdk.aws_iam.PolicyStatement({
           effect: cdk.aws_iam.Effect.ALLOW,
-          actions: ['kms:Decrypt'],
+          actions: ['kms:Decrypt', 'kms:DescribeKey'],
           resources: [`arn:${this.partition}:kms:*:${this.props.accountsConfig.getManagementAccountId()}:key/*`],
         }),
       ],

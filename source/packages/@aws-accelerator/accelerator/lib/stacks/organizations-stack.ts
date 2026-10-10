@@ -15,6 +15,7 @@ import {
   CentralSecurityServicesConfig,
   ControlTowerConfig,
   GuardDutyConfig,
+  IControlTowerControlParameter,
   IdentityCenterAssignmentConfig,
   IdentityCenterPermissionSetConfig,
 } from '@aws-accelerator/config';
@@ -174,7 +175,11 @@ export class OrganizationsStack extends AcceleratorStack {
     }
 
     // Macie Configuration
-    this.enableMacieDelegatedAdminAccount(securityAdminAccountId);
+    // Only create custom resources if Macie module is skipped
+    // When module runs successfully, it manages Macie via API calls
+    if (this.createMacieCustomResource) {
+      this.enableMacieDelegatedAdminAccount(securityAdminAccountId);
+    }
 
     //GuardDuty Config
     this.enableGuardDutyDelegatedAdminAccount(securityAdminAccountId);
@@ -231,7 +236,11 @@ export class OrganizationsStack extends AcceleratorStack {
     const enabledControlsTargets = controlsToEnable
       .map(control => {
         const ous = control.deploymentTargets.organizationalUnits;
-        return this.getEnabledControlTargetsFromOUs({ ouNames: ous, enabledControlIdentifier: control.identifier });
+        return this.getEnabledControlTargetsFromOUs({
+          ouNames: ous,
+          enabledControlIdentifier: control.identifier,
+          parameters: control.parameters,
+        });
       })
       .flat();
 
@@ -244,14 +253,20 @@ export class OrganizationsStack extends AcceleratorStack {
    * @param props - Configuration object for enabled control targets
    * @param props.ouNames - Array of organizational unit names to process
    * @param props.enabledControlIdentifier - The identifier of the control to be enabled
+   * @param props.parameters - Optional parameters forwarded to the Control Tower `EnableControl` API
    * @returns Array of objects containing OU details and control identifier mapping
    * @private
    */
 
-  private getEnabledControlTargetsFromOUs(props: { ouNames: string[]; enabledControlIdentifier: string }): {
+  private getEnabledControlTargetsFromOUs(props: {
+    ouNames: string[];
+    enabledControlIdentifier: string;
+    parameters?: IControlTowerControlParameter[];
+  }): {
     ouName: string;
     ouArn: string;
     enabledControlIdentifier: string;
+    parameters?: IControlTowerControlParameter[];
   }[] {
     const enabledControlTargets = [];
     for (const ouName of props.ouNames) {
@@ -260,6 +275,7 @@ export class OrganizationsStack extends AcceleratorStack {
         ouName,
         ouArn,
         enabledControlIdentifier: props.enabledControlIdentifier,
+        parameters: props.parameters,
       });
     }
     return enabledControlTargets;
@@ -534,7 +550,7 @@ export class OrganizationsStack extends AcceleratorStack {
    * @param adminAccountId
    */
   private enableMacieDelegatedAdminAccount(adminAccountId: string) {
-    if (this.centralSecurityServices.macie.enable) {
+    if (this.centralSecurityServices.macie?.enable) {
       if ((this.centralSecurityServices.macie.excludeRegions ?? []).indexOf(cdk.Stack.of(this).region) == -1) {
         this.logger.debug(
           `Starts macie admin account delegation to the account with email ${
@@ -676,6 +692,7 @@ export class OrganizationsStack extends AcceleratorStack {
         this.logger.debug(`SecurityHub Admin Account ID is ${adminAccountId}`);
         new SecurityHubOrganizationAdminAccount(this, 'SecurityHubOrganizationAdminAccount', {
           adminAccountId,
+          homeRegion: this.stackProperties.globalConfig.homeRegion,
           kmsKey: this.cloudwatchKey,
           logRetentionInDays: this.logRetention,
         });

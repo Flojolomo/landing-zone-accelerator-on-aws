@@ -13,7 +13,6 @@
 
 import { StreamMode } from '@aws-sdk/client-kinesis';
 import { GetParametersByPathCommand, SSMClient } from '@aws-sdk/client-ssm';
-import { AssumeRoleCommandOutput } from '@aws-sdk/client-sts';
 import { S3Client, GetObjectCommand, NoSuchKey } from '@aws-sdk/client-s3';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -24,8 +23,8 @@ import {
   throttlingBackOff,
   directoryExists,
   fileExists,
-  getCrossAccountCredentials,
-  setRetryStrategy,
+  CachingCredentialProvider,
+  AwsClientFactory,
 } from '@aws-accelerator/utils';
 
 import * as t from './common';
@@ -223,6 +222,7 @@ export abstract class ControlTowerControlConfig implements i.IControlTowerContro
   readonly enable: boolean = true;
   readonly deploymentTargets: t.DeploymentTargets = new t.DeploymentTargets();
   readonly regions: string[] | undefined = undefined;
+  readonly parameters: i.IControlTowerControlParameter[] | undefined = undefined;
 }
 
 /**
@@ -772,10 +772,9 @@ export class GlobalConfig implements i.IGlobalConfig {
     if (!directoryExists('asea-assets')) {
       throw new Error(`Could not create temp directory ${aseaAssetPath} for asea assets`);
     }
-    const s3Client = new S3Client({
+    const s3Client = AwsClientFactory.create(S3Client, {
       region: this.homeRegion,
-      customUserAgent: process.env['SOLUTION_ID'] ?? '',
-      retryStrategy: setRetryStrategy(),
+      enableLogging: false,
     });
     const mappingFile = await this.downloadFile({
       relativePath: 'mapping.json',
@@ -978,7 +977,7 @@ export class GlobalConfig implements i.IGlobalConfig {
     ssmPath: string,
     account: string,
     region: string,
-    partition: string,
+    _partition: string,
     managementAccountId: string,
   ): Promise<{
     account: string;
@@ -987,23 +986,9 @@ export class GlobalConfig implements i.IGlobalConfig {
       [key: string]: string;
     };
   }> {
-    let ssmClient = new SSMClient({ region });
+    let ssmClient = AwsClientFactory.create(SSMClient, { region, enableLogging: false });
     if (account !== managementAccountId) {
-      const crossAccountCredentials = await getCrossAccountCredentials(
-        account,
-        region,
-        partition,
-        this.managementAccountAccessRole,
-        'acceleratorResourceMapping',
-      );
-      if (!crossAccountCredentials) {
-        return {
-          account,
-          region,
-          parametersByPath: {},
-        };
-      }
-      ssmClient = this.getCrossAccountSsmClient(region, crossAccountCredentials);
+      ssmClient = this.getCrossAccountSsmClient(region, account, this.managementAccountAccessRole);
     }
     const parametersByPath = await this.getParametersByPath(ssmPath, ssmClient);
     return {
@@ -1014,25 +999,14 @@ export class GlobalConfig implements i.IGlobalConfig {
   }
   private async loadRegionLzaResources(
     region: string,
-    partition: string,
+    _partition: string,
     prefix: string,
     accounts: string[],
   ): Promise<void> {
     const getSsmPath = (resourceType: t.AseaResourceTypePaths) => `${prefix}${resourceType}`;
     if (!this.externalLandingZoneResources?.importExternalLandingZoneResources) return;
     for (const accountId of accounts) {
-      const crossAccountCredentials = await getCrossAccountCredentials(
-        accountId,
-        region,
-        partition,
-        this.managementAccountAccessRole,
-        'acceleratorResourceMapping',
-      );
-
-      if (!crossAccountCredentials) {
-        return;
-      }
-      const ssmClient = await this.getCrossAccountSsmClient(region, crossAccountCredentials);
+      const ssmClient = this.getCrossAccountSsmClient(region, accountId, this.managementAccountAccessRole);
       // Get Resources which are there in both external Accelerator and LZA
       // Can load only resources which are maintained in both
       // Loading all to avoid reading SSM Params multiple times
@@ -1088,10 +1062,9 @@ export class GlobalConfig implements i.IGlobalConfig {
   }): Promise<{ body: string; path: string } | undefined> {
     let s3Client = props.s3Client;
     if (!s3Client) {
-      s3Client = new S3Client({
+      s3Client = AwsClientFactory.create(S3Client, {
         region: this.homeRegion,
-        customUserAgent: process.env['SOLUTION_ID'] ?? '',
-        retryStrategy: setRetryStrategy(),
+        enableLogging: false,
       });
     }
     try {
@@ -1128,14 +1101,17 @@ export class GlobalConfig implements i.IGlobalConfig {
       throw e;
     }
   }
-  private getCrossAccountSsmClient(region: string, assumeRoleCredential: AssumeRoleCommandOutput) {
-    return new SSMClient({
-      credentials: {
-        accessKeyId: assumeRoleCredential.Credentials!.AccessKeyId!,
-        secretAccessKey: assumeRoleCredential.Credentials!.SecretAccessKey!,
-        sessionToken: assumeRoleCredential.Credentials?.SessionToken,
-      },
+  private getCrossAccountSsmClient(region: string, accountId: string, roleName: string) {
+    const credentialProvider = CachingCredentialProvider.get();
+    // Register an STS client for this region on demand before assuming a role in it.
+    // loadLzaResources() is invoked per enabled ASEA region during configuration loading
+    // and may reference regions beyond those passed to the initial init() call. addRegion()
+    // is idempotent, so this is a no-op for regions that are already configured.
+    credentialProvider.addRegion(region);
+    return AwsClientFactory.create(SSMClient, {
+      credentials: credentialProvider.forRole(accountId, roleName, region),
       region: region,
+      enableLogging: false,
     });
   }
 }

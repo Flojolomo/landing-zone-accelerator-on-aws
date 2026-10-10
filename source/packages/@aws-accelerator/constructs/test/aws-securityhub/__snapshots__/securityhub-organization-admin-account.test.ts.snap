@@ -51,7 +51,7 @@ exports[`SecurityHubOrganizationAdminAccount > Construct(SecurityHubOrganization
         },
         "Environment": {
           "Variables": {
-            "SOLUTION_ID": "AwsSolution/SO0199/1.15.5",
+            "SOLUTION_ID": "AwsSolution/SO0199/1.16.3",
           },
         },
         "Handler": "__entrypoint__.handler",
@@ -208,6 +208,9 @@ exports[`SecurityHubOrganizationAdminAccount > Construct(SecurityHubOrganization
         },
         "adminAccountId": {
           "Ref": "AWS::AccountId",
+        },
+        "homeRegion": {
+          "Ref": "AWS::Region",
         },
         "partition": {
           "Ref": "AWS::Partition",

@@ -118,6 +118,9 @@ export interface IGlobalConfig {
    * When enabled, LZA will place newly defined resources in separate CloudFormation stacks to prevent exceeding the 500 resource per stack limit.
    * Pre-existing resources will be preserved in their original stacks.
    *
+   * New deployments will have this property set to `true` in the initial config.
+   * Once enabled, this property cannot be set back to `false`.
+   *
    * @default false
    */
   readonly useV2Stacks?: boolean;
@@ -972,6 +975,53 @@ export interface IControlTowerControlConfig {
    * @default Home region only
    */
   readonly regions?: string[];
+
+  /**
+   * **Control Parameters** *(Optional)*
+   *
+   * A list of key/value pairs forwarded to the AWS Control Tower `EnableControl`
+   * API as the `Parameters` argument. This is required for region-aware controls
+   * (for example `AWS-GR_REGION_DENY` or `CT.MULTISERVICE.PV.1`), which otherwise
+   * fail to deploy with `Parameter AllowedRegions is required`.
+   *
+   * ### Usage Example
+   *
+   * ```yaml
+   * - identifier: CT.MULTISERVICE.PV.1
+   *   enable: true
+   *   deploymentTargets:
+   *     organizationalUnits:
+   *       - Root
+   *   parameters:
+   *     - key: AllowedRegions
+   *       value:
+   *         - us-east-1
+   *         - us-west-2
+   * ```
+   *
+   * @see [EnabledControl Parameters](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-controltower-enabledcontrol-enabledcontrolparameter.html)
+   */
+  readonly parameters?: IControlTowerControlParameter[];
+}
+
+/**
+ * *{@link IControlTowerControlConfig} / {@link IControlTowerControlParameter}*
+ *
+ * Key/value pair passed to the Control Tower `EnableControl` API as a control
+ * parameter. The shape mirrors the CloudFormation
+ * `AWS::ControlTower::EnabledControl` `Parameters` property.
+ */
+export interface IControlTowerControlParameter {
+  /**
+   * Parameter name (for example `AllowedRegions` or `ExemptedActions`).
+   */
+  readonly key: t.NonEmptyString;
+
+  /**
+   * Parameter value. Control Tower accepts JSON-compatible scalars or arrays;
+   * `AllowedRegions`, in particular, requires an array of region strings.
+   */
+  readonly value: string | number | boolean | (string | number | boolean)[];
 }
 
 /**
@@ -3890,6 +3940,13 @@ export interface IBudgetReportConfig {
  *    recipients:
  *     - myemail+pa1-budg@example.com
  *     - myemail+pa2-budg@example.com
+ *  - type: FORECASTED
+ *    thresholdType: PERCENTAGE
+ *    threshold: 80
+ *    comparisonOperator: GREATER_THAN
+ *    subscriptionType: SNS
+ *    recipients:
+ *     - arn:aws:sns:us-east-1:123456789012:budget-alerts
  * ```
  *
  * @category Global Configuration
@@ -3933,14 +3990,36 @@ export interface INotificationConfig {
    *
    * @deprecated Please use recipients property to specify recipients of the notification
    *
-   * The address that AWS sends budget notifications to, either an SNS topic or an email.
+   * The address that AWS sends budget notifications to, either an SNS topic ARN or an email.
+   *
+   * When `subscriptionType` is `EMAIL`, this must be a valid email address.
+   * When `subscriptionType` is `SNS`, this must be a full SNS topic ARN
+   * (e.g., `arn:aws:sns:us-east-1:123456789012:my-topic`).
    *
    */
   readonly address?: t.NonEmptyString;
   /**
    * **Recipients** *(Optional)*
    *
-   * A list of recipients that the notification will be sent to. Must be either an SNS topic or an email.
+   * A list of recipients that the notification will be sent to.
+   *
+   * When `subscriptionType` is `EMAIL`, each entry must be a valid email address.
+   * When `subscriptionType` is `SNS`, the list must contain exactly one full SNS topic ARN
+   * (e.g., `arn:aws:sns:us-east-1:123456789012:my-topic`).
+   *
+   * @example
+   * ```yaml
+   * # EMAIL recipients
+   * subscriptionType: EMAIL
+   * recipients:
+   *   - user1@example.com
+   *   - user2@example.com
+   *
+   * # SNS recipient (must be a full ARN, only one allowed)
+   * subscriptionType: SNS
+   * recipients:
+   *   - arn:aws:sns:us-east-1:123456789012:my-topic
+   * ```
    *
    */
   readonly recipients?: t.NonEmptyString[];

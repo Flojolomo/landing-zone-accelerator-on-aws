@@ -38,6 +38,7 @@ import {
   TargetGroupItemConfig,
   TransitGatewayAttachmentConfig,
   TransitGatewayConfig,
+  TransitGatewayConnectConfig,
   TransitGatewayRouteEntryConfig,
   TransitGatewayRouteTableConfig,
   TransitGatewayRouteTableDxGatewayEntryConfig,
@@ -150,8 +151,8 @@ export class NetworkAssociationsStack extends NetworkStack {
       crossAcctCrossRegionRouteTables.forEach((value, key) => this.routeTableMap.set(key, value));
 
       //
-      // Create transit gateway route table associations, propagations,
-      // for VPC and VPN attachments
+      // Create Transit Gateway route table associations
+      // and propagations for VPC and VPN attachments
       //
       this.createTransitGatewayResources(props);
 
@@ -177,6 +178,8 @@ export class NetworkAssociationsStack extends NetworkStack {
 
       //
       // Create Direct Connect resources
+      // DX associations always run (needed for static route attachment IDs).
+      // DX RT associations/propagations are guarded — the TGW module handles them.
       //
       this.createDirectConnectResources(props);
 
@@ -234,7 +237,9 @@ export class NetworkAssociationsStack extends NetworkStack {
       //
       // Create Transit Gateway Connect resources for Vpc Attachments
       //
-      this.createTransitGatewayConnect(props);
+      if (this.createTgwAssociationsCustomResources) {
+        this.createTransitGatewayConnect(props);
+      }
 
       //
       // Create NagSuppressions
@@ -951,8 +956,7 @@ export class NetworkAssociationsStack extends NetworkStack {
     }
 
     //
-    // Create Transit Gateway route table associations and propagations
-    // for VPC attachments
+    // Resolve attachment IDs (always needed for static routes)
     //
     const tgwAttachmentIdLookupMap: Record<string, TransitGatewayAttachmentLookupOption> = {};
 
@@ -975,6 +979,11 @@ export class NetworkAssociationsStack extends NetworkStack {
 
     // Perform single batch lookup for all attachments
     this.setBatchLookupTgwAttachmentId(tgwAttachmentIdLookupMap);
+
+    // Skip associations/propagations when TGW module handles them
+    if (!this.createTgwAssociationsCustomResources) {
+      return;
+    }
 
     // Create associations and propagations
     for (const vpcItem of this.vpcResources) {
@@ -1382,13 +1391,74 @@ export class NetworkAssociationsStack extends NetworkStack {
         }
 
         this.logger.info(`Creating a TGW Connect for: ${connectItem.name}`);
-        new TransitGatewayConnect(this, pascalCase(`${connectItem.name}TransitGatewayConnectAttachment`), {
-          name: connectItem.name,
-          transitGatewayAttachmentId: transitGatewayAttachmentId,
-          options: connectItem.options!,
-          tags: connectItem.tags,
-        });
+        const connectAttachment = new TransitGatewayConnect(
+          this,
+          pascalCase(`${connectItem.name}TransitGatewayConnectAttachment`),
+          {
+            name: connectItem.name,
+            transitGatewayAttachmentId: transitGatewayAttachmentId,
+            options: connectItem.options!,
+            tags: connectItem.tags,
+          },
+        );
+
+        // Create route table associations and propagations for the Connect attachment
+        this.createTransitGatewayConnectRouteTableAssociationsAndPropagations(connectItem, connectAttachment);
       }
+    }
+  }
+
+  /**
+   * Create transit gateway route table associations and propagations for a Connect attachment
+   * @param connectItem {@link TransitGatewayConnectConfig}
+   * @param connectAttachment {@link TransitGatewayConnect}
+   */
+  private createTransitGatewayConnectRouteTableAssociationsAndPropagations(
+    connectItem: TransitGatewayConnectConfig,
+    connectAttachment: TransitGatewayConnect,
+  ): void {
+    const connectAttachmentId = connectAttachment.transitGatewayAttachmentId;
+
+    // Create route table associations
+    for (const routeTableItem of connectItem.routeTableAssociations ?? []) {
+      const routeTableKey = `${connectItem.transitGateway.name}_${routeTableItem}`;
+      const transitGatewayRouteTableId = this.transitGatewayRouteTables.get(routeTableKey);
+
+      if (!transitGatewayRouteTableId) {
+        this.logger.error(`Transit Gateway Route Table ${routeTableKey} not found`);
+        throw new Error(`Configuration validation failed at runtime.`);
+      }
+
+      const association = new TransitGatewayRouteTableAssociation(
+        this,
+        pascalCase(`${connectItem.name}${routeTableItem}ConnectAssociation`),
+        {
+          transitGatewayAttachmentId: connectAttachmentId,
+          transitGatewayRouteTableId,
+        },
+      );
+      association.node.addDependency(connectAttachment);
+    }
+
+    // Create route table propagations
+    for (const routeTableItem of connectItem.routeTablePropagations ?? []) {
+      const routeTableKey = `${connectItem.transitGateway.name}_${routeTableItem}`;
+      const transitGatewayRouteTableId = this.transitGatewayRouteTables.get(routeTableKey);
+
+      if (!transitGatewayRouteTableId) {
+        this.logger.error(`Transit Gateway Route Table ${routeTableKey} not found`);
+        throw new Error(`Configuration validation failed at runtime.`);
+      }
+
+      const propagation = new TransitGatewayRouteTablePropagation(
+        this,
+        pascalCase(`${connectItem.name}${routeTableItem}ConnectPropagation`),
+        {
+          transitGatewayAttachmentId: connectAttachmentId,
+          transitGatewayRouteTableId,
+        },
+      );
+      propagation.node.addDependency(connectAttachment);
     }
   }
 
@@ -2330,8 +2400,11 @@ export class NetworkAssociationsStack extends NetworkStack {
         //
         // Create transit gateway route table associations
         // and propagations for DX Gateway attachments
+        // Skip when TGW module handles them
         //
-        this.createDxTgwRouteTableAssociationsAndPropagations(associationItem, tgw, tgwAccountId, dxgwItem);
+        if (this.createTgwAssociationsCustomResources) {
+          this.createDxTgwRouteTableAssociationsAndPropagations(associationItem, tgw, tgwAccountId, dxgwItem);
+        }
       }
     }
   }

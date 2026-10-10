@@ -80,11 +80,28 @@ echo "management account $MANAGEMENT_ACCOUNT_ID"
 
 # Define stacks to be deployed
 # AllStacks contains the stacks to be deployed after prepare and accounts stages
-AllStacks=( 'key' 'logging' 'organizations' 'security-audit' 'network-prep' 'security' 'operations' 'network-vpc' 'security-resources' 'network-associations' 'customizations' 'finalize' )
+AllStacks=( 'key' 'logging' 'organizations' 'security-audit' 'network-prep' 'security' 'operations' 'network-vpc' 'security-resources' 'identity-center' 'network-associations' 'customizations' 'finalize' )
 # SomeStacks can be used to deploy specific stacks only
 SomeStacks=( $stack1 $stack2 $stack3 $stack4 $stack5 $stack6 $stack7 $stack8 $stack9 $stack10 $stack11 $stack12 $stack13 $stack14 )
 
 cd /landing-zone-accelerator-on-aws/source/packages/\@aws-accelerator/installer
+
+echo "Setting up Module Runner Infrastructure"
+
+# Determine external pipeline mode for resource uniqueness
+ENABLE_EXTERNAL_PIPELINE_ACCOUNT="no"
+if [ -n "$MANAGEMENT_ACCOUNT_ID" ] && [ -n "$MANAGEMENT_ACCOUNT_ROLE_NAME" ]; then
+    ENABLE_EXTERNAL_PIPELINE_ACCOUNT="yes"
+fi
+
+# Set MODULE_RESOURCE_PREFIX for naming module infrastructure resources (tables, log groups).
+# External deployments use the qualifier; internal deployments use the accelerator prefix.
+if [ "$ENABLE_EXTERNAL_PIPELINE_ACCOUNT" = "yes" ] && [ -n "$ACCELERATOR_QUALIFIER" ]; then
+    export MODULE_RESOURCE_PREFIX="${ACCELERATOR_QUALIFIER}"
+else
+    export MODULE_RESOURCE_PREFIX="${ACCELERATOR_PREFIX}"
+fi
+export VERBOSE_LOG_GROUP_NAME="${MODULE_RESOURCE_PREFIX}-Module-Verbose-Logs"
 
 # Handle external pipeline role assumption for bootstrap
 if [ -n "$MANAGEMENT_ACCOUNT_ID" ] && [ -n "$MANAGEMENT_ACCOUNT_ROLE_NAME" ]; then
@@ -153,8 +170,7 @@ for Item1 in prepare accounts; do
     echo "DEPLOYING $Item1 STACK"
 
     export ACCELERATOR_STAGE=$Item1
-    RUNNER_ARGS="--partition ${PARTITION} --region ${AWS_REGION} --config-dir $srcDirConfig --stage $Item1 --prefix AWSAccelerator"
-    set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS
+    set -e && yarn run lza --config-dir $srcDirConfig --partition $PARTITION --region $AWS_REGION --stage $ACCELERATOR_STAGE --accelerator-prefix $ACCELERATOR_PREFIX --verbose
     
     yarn run ts-node --transpile-only cdk.ts synth \
         --stage $Item1 \
@@ -180,8 +196,7 @@ done
 # This ensures all newly created accounts are properly bootstrapped
 echo "BOOTSTRAPPING ALL ACCOUNTS"
 
-RUNNER_ARGS="--partition ${PARTITION} --region ${AWS_REGION} --config-dir $srcDirConfig --stage bootstrap --prefix AWSAccelerator"
-set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS
+set -e && yarn run lza --config-dir $srcDirConfig --partition $PARTITION --region $AWS_REGION --stage bootstrap --accelerator-prefix $ACCELERATOR_PREFIX --verbose
 yarn run ts-node --transpile-only cdk.ts --require-approval never synth \
     --stage bootstrap \
     --config-dir $srcDirConfig \
@@ -195,8 +210,8 @@ yarn run ts-node --transpile-only cdk.ts --require-approval never bootstrap \
     --app cdk.out
 
 ## adding this specifically for network refactor v2 stacks
-RUNNER_ARGS="--partition ${PARTITION} --region ${AWS_REGION} --config-dir $srcDirConfig --stage network-vpc --prefix AWSAccelerator"
-set -e && CDK_OPTIONS=bootstrap yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS
+
+set -e && CDK_OPTIONS=bootstrap yarn run lza --config-dir $srcDirConfig --partition $PARTITION --region $AWS_REGION --stage network-vpc --accelerator-prefix $ACCELERATOR_PREFIX --verbose
 
 
 if [ $? -ne 0 ]; then
@@ -213,8 +228,7 @@ if [ -z "$SomeStacks" ]; then
     echo "Deploying all remaining stacks in sequence"
     for Item1 in ${AllStacks[*]}; do
         echo "DEPLOYING $Item1 STAGE"
-        RUNNER_ARGS="--partition ${PARTITION} --region ${AWS_REGION} --config-dir $srcDirConfig --stage $Item1 --prefix AWSAccelerator"
-        set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS
+        set -e && yarn run lza --config-dir $srcDirConfig --partition $PARTITION --region $AWS_REGION --stage $Item1 --accelerator-prefix $ACCELERATOR_PREFIX --verbose
         
         yarn run ts-node --transpile-only cdk.ts synth \
             --stage $Item1 \
@@ -240,9 +254,8 @@ else
     echo "DEPLOYING ${SomeStacks[*]} STAGES"
     for Item2 in ${SomeStacks[*]}; do
         echo "DEPLOYING $Item2 STAGE"
-
-        RUNNER_ARGS="--partition ${PARTITION} --region ${AWS_REGION} --config-dir $srcDirConfig --stage $Item2 --prefix AWSAccelerator"
-        set -e && yarn run ts-node ../modules/bin/runner.ts $RUNNER_ARGS
+        
+        set -e && yarn run lza --config-dir $srcDirConfig --partition $PARTITION --region $AWS_REGION --stage $Item2 --accelerator-prefix $ACCELERATOR_PREFIX --verbose
         
         yarn run ts-node --transpile-only cdk.ts synth \
             --stage $Item2 \

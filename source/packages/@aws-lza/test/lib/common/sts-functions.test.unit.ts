@@ -11,10 +11,16 @@
  *  and limitations under the License.
  */
 
-import { describe, beforeEach, expect, test, vi } from 'vitest';
 import { STSClient } from '@aws-sdk/client-sts';
-import { getCredentials, getGlobalRegion, getCurrentSessionDetails } from '../../../lib/common/sts-functions';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { IAssumeRoleCredential } from '../../../lib/common/interfaces';
+import {
+  getCredentials,
+  getCurrentSessionDetails,
+  getGlobalRegion,
+  getS3Endpoint,
+  getStsEndpoint,
+} from '../../../lib/common/sts-functions';
 
 vi.mock('@aws-sdk/client-sts', () => ({
   STSClient: vi.fn(),
@@ -24,19 +30,29 @@ vi.mock('@aws-sdk/client-sts', () => ({
 
 vi.mock('../../../lib/common/utility', () => ({
   executeApi: vi.fn(),
-  setRetryStrategy: vi.fn(function() { return {}; }),
+  setRetryStrategy: vi.fn(function () {
+    return {};
+  }),
 }));
 
 vi.mock('../../../lib/common/logger', () => ({
-  createLogger: vi.fn(function() { return {
-    info: vi.fn(),
-    error: vi.fn(),
-  }; }),
+  createLogger: vi.fn(function () {
+    return {
+      info: vi.fn(),
+      error: vi.fn(),
+    };
+  }),
 }));
 
 vi.mock('../../../lib/common/types', () => ({
   MODULE_EXCEPTIONS: {
     SERVICE_EXCEPTION: 'ServiceException',
+  },
+}));
+
+vi.mock('../../../lib/common/credential-cache', () => ({
+  credentialCache: {
+    getOrFetch: vi.fn(),
   },
 }));
 
@@ -59,11 +75,20 @@ const MOCK_CONSTANTS = {
 
 describe('sts-functions', () => {
   let mockExecuteApi: ReturnType<typeof vi.fn>;
+  let mockCredentialCache: { getOrFetch: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    const utility = await import('../../../lib/common/utility');
+    const utility = await import('../../../lib/common/utility.js');
     mockExecuteApi = vi.mocked(utility.executeApi);
+
+    const cache = await import('../../../lib/common/credential-cache.js');
+    mockCredentialCache = vi.mocked(cache.credentialCache);
+
+    // Default behavior: credential cache calls the fetcher function immediately
+    mockCredentialCache.getOrFetch.mockImplementation(async (_, fetcher) => {
+      return await fetcher();
+    });
   });
 
   describe('getCredentials', () => {
@@ -263,6 +288,113 @@ describe('sts-functions', () => {
         }),
       ).rejects.toThrow('ServiceException: AssumeRoleCommand did not return SessionToken');
     });
+
+    test('should pass Policy parameter to AssumeRoleCommand when sessionPolicy is provided', async () => {
+      const mockPolicy =
+        '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"],"Resource":"*"}]}';
+      mockExecuteApi
+        .mockResolvedValueOnce({ Arn: 'arn:aws:iam::111111111111:role/CurrentRole' })
+        .mockResolvedValueOnce({
+          Credentials: {
+            AccessKeyId: MOCK_CONSTANTS.credentials.accessKeyId,
+            SecretAccessKey: MOCK_CONSTANTS.credentials.secretAccessKey,
+            SessionToken: MOCK_CONSTANTS.credentials.sessionToken,
+            Expiration: MOCK_CONSTANTS.credentials.expiration,
+          },
+        });
+
+      await getCredentials({
+        accountId: MOCK_CONSTANTS.accountId,
+        region: MOCK_CONSTANTS.region,
+        logPrefix: MOCK_CONSTANTS.logPrefix,
+        partition: MOCK_CONSTANTS.partition,
+        assumeRoleName: MOCK_CONSTANTS.assumeRoleName,
+        sessionPolicy: mockPolicy,
+      });
+
+      expect(mockExecuteApi).toHaveBeenCalledWith(
+        'AssumeRoleCommand',
+        expect.objectContaining({ Policy: mockPolicy }),
+        expect.any(Function),
+        expect.anything(),
+        MOCK_CONSTANTS.logPrefix,
+      );
+    });
+
+    test('should not include Policy in AssumeRoleCommand when sessionPolicy is undefined', async () => {
+      mockExecuteApi
+        .mockResolvedValueOnce({ Arn: 'arn:aws:iam::111111111111:role/CurrentRole' })
+        .mockResolvedValueOnce({
+          Credentials: {
+            AccessKeyId: MOCK_CONSTANTS.credentials.accessKeyId,
+            SecretAccessKey: MOCK_CONSTANTS.credentials.secretAccessKey,
+            SessionToken: MOCK_CONSTANTS.credentials.sessionToken,
+            Expiration: MOCK_CONSTANTS.credentials.expiration,
+          },
+        });
+
+      await getCredentials({
+        accountId: MOCK_CONSTANTS.accountId,
+        region: MOCK_CONSTANTS.region,
+        logPrefix: MOCK_CONSTANTS.logPrefix,
+        partition: MOCK_CONSTANTS.partition,
+        assumeRoleName: MOCK_CONSTANTS.assumeRoleName,
+      });
+
+      expect(mockExecuteApi).toHaveBeenCalledWith(
+        'AssumeRoleCommand',
+        expect.objectContaining({ Policy: undefined }),
+        expect.any(Function),
+        expect.anything(),
+        MOCK_CONSTANTS.logPrefix,
+      );
+    });
+
+    test('should throw when requireSessionPolicy is true and no sessionPolicy provided', async () => {
+      mockExecuteApi.mockResolvedValueOnce({ Arn: 'arn:aws:iam::111111111111:role/CurrentRole' });
+
+      await expect(
+        getCredentials({
+          accountId: MOCK_CONSTANTS.accountId,
+          region: MOCK_CONSTANTS.region,
+          logPrefix: MOCK_CONSTANTS.logPrefix,
+          partition: MOCK_CONSTANTS.partition,
+          assumeRoleName: MOCK_CONSTANTS.assumeRoleName,
+          requireSessionPolicy: true,
+        }),
+      ).rejects.toThrow('blocked: no session policy provided');
+    });
+
+    test('should throw when sessionPolicy is invalid JSON', async () => {
+      mockExecuteApi.mockResolvedValueOnce({ Arn: 'arn:aws:iam::111111111111:role/CurrentRole' });
+
+      await expect(
+        getCredentials({
+          accountId: MOCK_CONSTANTS.accountId,
+          region: MOCK_CONSTANTS.region,
+          logPrefix: MOCK_CONSTANTS.logPrefix,
+          partition: MOCK_CONSTANTS.partition,
+          assumeRoleName: MOCK_CONSTANTS.assumeRoleName,
+          sessionPolicy: 'not-valid-json',
+        }),
+      ).rejects.toThrow('Invalid session policy JSON');
+    });
+
+    test('should throw when sessionPolicy is empty string', async () => {
+      mockExecuteApi.mockResolvedValueOnce({ Arn: 'arn:aws:iam::111111111111:role/CurrentRole' });
+
+      await expect(
+        getCredentials({
+          accountId: MOCK_CONSTANTS.accountId,
+          region: MOCK_CONSTANTS.region,
+          logPrefix: MOCK_CONSTANTS.logPrefix,
+          partition: MOCK_CONSTANTS.partition,
+          assumeRoleName: MOCK_CONSTANTS.assumeRoleName,
+          sessionPolicy: '',
+          requireSessionPolicy: true,
+        }),
+      ).rejects.toThrow('blocked: no session policy provided');
+    });
   });
 
   describe('getGlobalRegion', () => {
@@ -273,8 +405,65 @@ describe('sts-functions', () => {
       expect(getGlobalRegion('aws-iso-e')).toBe('eu-isoe-west-1');
       expect(getGlobalRegion('aws-iso-f')).toBe('us-isof-south-1');
       expect(getGlobalRegion('aws-cn')).toBe('cn-northwest-1');
+      expect(getGlobalRegion('aws-eusc')).toBe('eusc-de-east-1');
       expect(getGlobalRegion('aws')).toBe('us-east-1');
       expect(getGlobalRegion('unknown')).toBe('us-east-1');
+    });
+  });
+
+  describe('getStsEndpoint', () => {
+    const region = 'eusc-de-east-1';
+
+    test('should return the EUSC STS endpoint for aws-eusc partition', () => {
+      expect(getStsEndpoint('aws-eusc', region)).toBe(`https://sts.${region}.amazonaws.eu`);
+    });
+
+    test('should return correct endpoints for isolated and sovereign partitions', () => {
+      expect(getStsEndpoint('aws-iso', 'us-iso-east-1')).toBe('https://sts.us-iso-east-1.c2s.ic.gov');
+      expect(getStsEndpoint('aws-iso-b', 'us-isob-east-1')).toBe('https://sts.us-isob-east-1.sc2s.sgov.gov');
+      expect(getStsEndpoint('aws-iso-f', 'us-isof-south-1')).toBe('https://sts.us-isof-south-1.csp.hci.ic.gov');
+      expect(getStsEndpoint('aws-iso-e', 'eu-isoe-west-1')).toBe('https://sts.eu-isoe-west-1.cloud.adc-e.uk');
+      expect(getStsEndpoint('aws-cn', 'cn-northwest-1')).toBe('https://sts.cn-northwest-1.amazonaws.com.cn');
+    });
+
+    test('should return the commercial STS endpoint for aws and GovCloud partitions', () => {
+      expect(getStsEndpoint('aws', 'us-east-1')).toBe('https://sts.us-east-1.amazonaws.com');
+      expect(getStsEndpoint('aws-us-gov', 'us-gov-west-1')).toBe('https://sts.us-gov-west-1.amazonaws.com');
+      expect(getStsEndpoint('unknown', 'us-east-1')).toBe('https://sts.us-east-1.amazonaws.com');
+    });
+  });
+
+  describe('getS3Endpoint', () => {
+    const bucket = 'cdk-accel-assets-049171542103-eusc-de-east-1';
+
+    test('should return the EUSC S3 endpoint for aws-eusc partition', () => {
+      expect(getS3Endpoint('aws-eusc', 'eusc-de-east-1', bucket)).toBe(
+        `https://${bucket}.s3.eusc-de-east-1.amazonaws.eu`,
+      );
+    });
+
+    test('should return correct endpoints for isolated and sovereign partitions', () => {
+      expect(getS3Endpoint('aws-iso', 'us-iso-east-1', bucket)).toBe(`https://${bucket}.s3.us-iso-east-1.c2s.ic.gov`);
+      expect(getS3Endpoint('aws-iso-b', 'us-isob-east-1', bucket)).toBe(
+        `https://${bucket}.s3.us-isob-east-1.sc2s.sgov.gov`,
+      );
+      expect(getS3Endpoint('aws-iso-f', 'us-isof-south-1', bucket)).toBe(
+        `https://${bucket}.s3.us-isof-south-1.csp.hci.ic.gov`,
+      );
+      expect(getS3Endpoint('aws-iso-e', 'eu-isoe-west-1', bucket)).toBe(
+        `https://${bucket}.s3.eu-isoe-west-1.cloud.adc-e.uk`,
+      );
+      expect(getS3Endpoint('aws-cn', 'cn-northwest-1', bucket)).toBe(
+        `https://${bucket}.s3.cn-northwest-1.amazonaws.com.cn`,
+      );
+    });
+
+    test('should return the commercial S3 endpoint for aws, GovCloud, and unknown partitions', () => {
+      expect(getS3Endpoint('aws', 'us-east-1', bucket)).toBe(`https://${bucket}.s3.us-east-1.amazonaws.com`);
+      expect(getS3Endpoint('aws-us-gov', 'us-gov-west-1', bucket)).toBe(
+        `https://${bucket}.s3.us-gov-west-1.amazonaws.com`,
+      );
+      expect(getS3Endpoint('unknown', 'us-east-1', bucket)).toBe(`https://${bucket}.s3.us-east-1.amazonaws.com`);
     });
   });
 
@@ -285,7 +474,9 @@ describe('sts-functions', () => {
           region: vi.fn().mockResolvedValue('us-west-2'),
         },
       };
-      vi.mocked(STSClient).mockImplementation(function() { return mockClient as STSClient; });
+      vi.mocked(STSClient).mockImplementation(function () {
+        return mockClient as unknown as STSClient;
+      });
 
       mockExecuteApi.mockResolvedValue({
         Account: MOCK_CONSTANTS.accountId,
@@ -308,7 +499,9 @@ describe('sts-functions', () => {
           region: vi.fn().mockResolvedValue('us-west-2'),
         },
       };
-      vi.mocked(STSClient).mockImplementation(function() { return mockClient as STSClient; });
+      vi.mocked(STSClient).mockImplementation(function () {
+        return mockClient as unknown as STSClient;
+      });
 
       mockExecuteApi.mockResolvedValue({
         Account: MOCK_CONSTANTS.accountId,
@@ -332,7 +525,9 @@ describe('sts-functions', () => {
           region: vi.fn().mockResolvedValue('us-west-2'),
         },
       };
-      vi.mocked(STSClient).mockImplementation(function() { return mockClient as STSClient; });
+      vi.mocked(STSClient).mockImplementation(function () {
+        return mockClient as unknown as STSClient;
+      });
 
       mockExecuteApi.mockResolvedValue({
         Arn: 'arn:aws:iam::123456789012:role/TestRole',
@@ -349,7 +544,9 @@ describe('sts-functions', () => {
           region: vi.fn().mockResolvedValue('us-west-2'),
         },
       };
-      vi.mocked(STSClient).mockImplementation(function() { return mockClient as STSClient; });
+      vi.mocked(STSClient).mockImplementation(function () {
+        return mockClient as unknown as STSClient;
+      });
 
       mockExecuteApi.mockResolvedValue({
         Account: MOCK_CONSTANTS.accountId,
@@ -366,7 +563,9 @@ describe('sts-functions', () => {
           region: vi.fn().mockResolvedValue('us-west-2'),
         },
       };
-      vi.mocked(STSClient).mockImplementation(function() { return mockClient as STSClient; });
+      vi.mocked(STSClient).mockImplementation(function () {
+        return mockClient as unknown as STSClient;
+      });
 
       mockExecuteApi.mockResolvedValue({
         Account: MOCK_CONSTANTS.accountId,
@@ -385,7 +584,9 @@ describe('sts-functions', () => {
           region: vi.fn().mockResolvedValue('eu-west-1'),
         },
       };
-      vi.mocked(STSClient).mockImplementation(function() { return mockClient as STSClient; });
+      vi.mocked(STSClient).mockImplementation(function () {
+        return mockClient as unknown as STSClient;
+      });
 
       mockExecuteApi.mockResolvedValue({
         Account: MOCK_CONSTANTS.accountId,
@@ -404,9 +605,12 @@ describe('sts-functions', () => {
           region: vi.fn().mockResolvedValue(undefined),
         },
       };
-      vi.mocked(STSClient).mockImplementation(function() { return mockClient as STSClient; });
+      vi.mocked(STSClient).mockImplementation(function () {
+        return mockClient as unknown as STSClient;
+      });
 
-      mockExecuteApi.mockResolvedValue({
+      // Explicitly set the mock response for this test
+      mockExecuteApi.mockResolvedValueOnce({
         Account: MOCK_CONSTANTS.accountId,
         Arn: 'arn:aws:iam::123456789012:role/TestRole',
       });
